@@ -45,7 +45,7 @@ impl<'a> Comments<'a> { // TODO fix all the unwraps
 		
 		self.last = Some(resp["data"]["children"][0]["data"]["name"].as_str().unwrap_or_default().to_string());
 		
-		let mut new: Listing<Comment> = Listing::from_value(resp); // TODO no clone
+		let new: Listing<Comment> = Listing::from_value(resp).unwrap();
 		
 		self.cache.append(&mut VecDeque::from(new.children));
 	}

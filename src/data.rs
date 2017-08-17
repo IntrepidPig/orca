@@ -1,5 +1,6 @@
 use json;
 use json::Value;
+use serde::ser::Error;
 
 #[derive(Deserialize)]
 pub struct Listing<T> {
@@ -7,14 +8,21 @@ pub struct Listing<T> {
 }
 
 impl Listing<Comment> {
-	pub fn from_value(listing: Value) -> Listing<Comment> {
+	pub fn from_value(listing: Value) -> Result<Listing<Comment>, json::Error> {
 		let mut children: Vec<Comment> = Vec::new();
 		
-		for comment in listing["data"]["children"].as_array().unwrap() {
-			children.push(json::from_value(comment["data"].clone()).unwrap());
+		if let Some(array) = listing["data"]["children"].as_array() {
+			for comment in array {
+				children.push(match json::from_value(comment["data"].clone()) {
+					Ok(val) => val,
+					Err(e) => return Err(e),
+				});
+			}
+			
+			Ok(Listing { children })
+		} else {
+			Err(json::Error::custom("Couldn't parse as array"))
 		}
-		
-		Listing { children }
 	}
 }
 
