@@ -54,7 +54,7 @@ fn comment_stream() {
 	
 	for comment in comments {
 		count += 1;
-		println!("Got comment #{}: {}", count, comment["data"]["author"]);
+		println!("Got comment #{}: {}", count, comment.author);
 		
 		if count > 512 {
 			break;

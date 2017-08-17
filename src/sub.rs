@@ -3,21 +3,24 @@ use std::collections::VecDeque;
 use std::thread;
 use std::time::Duration;
 
+use json;
 use json::Value;
 use http::{Request, Method, Url};
 
 use net::Connection;
+use data::Listing;
+use data::Comment;
 
 pub struct Comments<'a> {
 	sub: String,
-	cache: VecDeque<Value>,
+	cache: VecDeque<Comment>,
 	last: Option<String>,
 	conn: &'a mut Connection,
 }
 
 impl<'a> Comments<'a> { // TODO fix all the unwraps
 	pub fn new(conn: &'a mut Connection, sub: String) -> Comments<'a> {
-		let cache: VecDeque<Value> = VecDeque::new();
+		let cache: VecDeque<Comment> = VecDeque::new();
 		let last = None;
 		
 		Comments {
@@ -42,14 +45,14 @@ impl<'a> Comments<'a> { // TODO fix all the unwraps
 		
 		self.last = Some(resp["data"]["children"][0]["data"]["name"].as_str().unwrap_or_default().to_string());
 		
-		let mut new: VecDeque<Value> = VecDeque::from(resp["data"]["children"].as_array().unwrap().to_owned());
+		let mut new: Listing<Comment> = Listing::from_value(resp); // TODO no clone
 		
-		self.cache.append(&mut new);
+		self.cache.append(&mut VecDeque::from(new.children));
 	}
 }
 
 impl<'a> Iterator for Comments<'a> {
-	type Item = Value;
+	type Item = Comment;
 	
 	/// If recieved None, it has already refreshed and recieved no comments. Applications using this
 	/// iterator should sleep on recieving None from this function
