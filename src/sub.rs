@@ -38,8 +38,6 @@ impl<'a> Comments<'a> { // TODO fix all the unwraps
 		let req = Request::new(Method::Get,
 		                       Url::parse_with_params(&format!("https://www.reddit.com/r/{}/comments/.json", self.sub), params).unwrap());
 		
-		println!("Request formatted: {:?}", req);
-		
 		let resp = self.conn.run_request(req).unwrap();
 		
 		self.last = Some(resp["data"]["children"][0]["data"]["name"].as_str().unwrap_or_default().to_string());
