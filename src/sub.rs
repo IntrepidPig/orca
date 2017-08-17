@@ -12,11 +12,11 @@ pub struct Comments<'a> {
 	sub: String,
 	cache: VecDeque<Value>,
 	last: Option<String>,
-	conn: &'a Connection,
+	conn: &'a mut Connection,
 }
 
 impl<'a> Comments<'a> { // TODO fix all the unwraps
-	pub fn new(conn: &'a Connection, sub: String) -> Comments<'a> {
+	pub fn new(conn: &'a mut Connection, sub: String) -> Comments<'a> {
 		let cache: VecDeque<Value> = VecDeque::new();
 		let last = None;
 		
@@ -59,7 +59,6 @@ impl<'a> Iterator for Comments<'a> {
 		} else {
 			while self.cache.len() == 0 {
 				self.refresh();
-				thread::sleep(Duration::from_secs(2));
 			}
 			self.cache.pop_front()
 		}

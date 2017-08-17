@@ -24,13 +24,14 @@ impl Connection {
 		Connection { auth: None, useragent, client: Client::new().unwrap(), lastreq: Instant::now() }
 	}
 	
-	pub fn run_request(&self, req: Request) -> Result<json::Value, ()> {
+	pub fn run_request(&mut self, req: Request) -> Result<json::Value, ()> {
 		if self.lastreq.elapsed() < Duration::new(2, 0) {
-			println!("Ratelimiting");
-			thread::sleep(Instant::now() - self.lastreq);
+			let now = Instant::now();
+			let targetinstant = self.lastreq + Duration::new(2, 150000000);
+			thread::sleep(targetinstant - now);
 		}
 		
-		if let Ok(mut response) = self.client.execute(req) {
+		let result = if let Ok(mut response) = self.client.execute(req) {
 			let mut out = String::new();
 			match response.read_to_string(&mut out) {
 				Err(_) => return Err(()),
@@ -39,11 +40,14 @@ impl Connection {
 			Ok(json::from_str(&out).unwrap())
 		} else {
 			Err(())
-		}
+		};
+		
+		self.lastreq = Instant::now();
+		result
 	}
 	
-	pub fn run_auth_request(&self, mut req: Request) -> Result<json::Value, ()> {
-		if let &Some(ref auth) = &self.auth {
+	pub fn run_auth_request(&mut self, mut req: Request) -> Result<json::Value, ()> {
+		if let Some(ref auth) = self.auth.clone() {
 			req.headers_mut().set(Authorization(
 				Bearer {
 					token: auth.token.clone()

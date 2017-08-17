@@ -42,7 +42,7 @@ impl Reddit {
 	}
 	
 	/// Get the posts in a subreddit sorted in a specific way
-	pub fn get_posts(&self, sub: String, sort: sub::Sort) -> Result<json::Value, ()> {
+	pub fn get_posts(&mut self, sub: String, sort: sub::Sort) -> Result<json::Value, ()> {
 		let req = Request::new(Method::Get,
 		                       Url::parse_with_params(&format!("https://www.reddit.com/r/{}/.json", sub),
 		                                              sort.param()).unwrap());
@@ -51,7 +51,7 @@ impl Reddit {
 	}
 	
 	/// Submit a self post
-	pub fn submit_self(&self, sub: String, title: String, text: String, sendreplies: bool) -> Result<json::Value, ()> {
+	pub fn submit_self(&mut self, sub: String, title: String, text: String, sendreplies: bool) -> Result<json::Value, ()> {
 		let mut params: HashMap<&str, &str> = HashMap::new();
 		params.insert("sr", &sub);
 		params.insert("kind", "self");
@@ -65,14 +65,14 @@ impl Reddit {
 		self.conn.run_auth_request(req)
 	}
 	
-	pub fn get_user(&self) -> Result<json::Value, ()> {
+	pub fn get_user(&mut self) -> Result<json::Value, ()> {
 		let req = Request::new(Method::Get, Url::parse("https://oauth.reddit.com/api/v1/me/.json").unwrap());
 		
 		self.conn.run_auth_request(req)
 	}
 	
 	/// Get a iterator of all comments in order of being posted
-	fn get_comments(&self, sub: String) -> sub::Comments {
-		sub::Comments::new(&self.conn, sub)
+	fn get_comments(&mut self, sub: String) -> sub::Comments {
+		sub::Comments::new(&mut self.conn, sub)
 	}
 }
