@@ -36,7 +36,6 @@ impl Connection {
 				Err(_) => return Err(()),
 				_ => {}
 			}
-			println!("Got response: {}", out);
 			Ok(json::from_str(&out).unwrap())
 		} else {
 			Err(())
