@@ -10,6 +10,9 @@ use net::Connection;
 
 
 /// Contains data for each possible oauth type
+/// Currently only Script is supported
+/// # Variants
+/// * `Script(String, String)` where String 1 is the script client id and String 2 is the script client password
 #[derive(Debug, Clone)]
 pub enum OauthApp {
 	/// Not Implemented
@@ -20,14 +23,21 @@ pub enum OauthApp {
 	Script(String, String)
 }
 
+/// Contains authorization info for a user and client
+/// Build with `Auth::new()`
 #[derive(Debug, Clone)]
 pub struct Auth {
+	/// Oauth app type
 	pub app: OauthApp,
+	/// Username
 	pub username: String,
+	/// Password
 	pub password: String, // TODO not pub
+	/// Bearer token
 	pub token: String,
 }
 
+/// Errors given from authorization
 #[derive(Debug, Clone)]
 pub enum AuthError<'a> {
 	UrlError(&'a str),
@@ -76,6 +86,14 @@ impl Auth {
 		}
 	}
 	
+	/// Authorize a user
+	/// ## To Use:
+	/// Set the auth field of a connection to an option with the success value of this function
+	/// # Arguments:
+	/// * `conn` - A reference to the main connection object (part of a Reddit struct)
+	/// * `app` - Oauth app type. This also contains client ids, client secrets, etc.
+	/// * `username` - Username of the user to authenticate as
+	/// * `password` - Password of the user to authenticate as
 	pub fn new(conn: &Connection, app: OauthApp, username: String, password: String) -> Result<Auth, AuthError> {
 		match Auth::get_token(conn, &app, &username, &password) {
 			Ok(token) => {

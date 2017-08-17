@@ -28,7 +28,7 @@ impl<'a> Comments<'a> { // TODO fix all the unwraps
 		}
 	}
 	
-	pub fn refresh(&mut self) {
+	fn refresh(&mut self) {
 		let mut params: HashMap<String, String> = HashMap::new();
 		if let Some(last) = self.last.clone() {
 			params.insert("before".to_string(), last);
@@ -65,6 +65,7 @@ impl<'a> Iterator for Comments<'a> {
 	}
 }
 
+/// Sort type of a subreddit
 pub enum Sort {
 	Hot,
 	New,
@@ -74,6 +75,7 @@ pub enum Sort {
 }
 
 impl Sort {
+	/// Convert to url parameters
 	pub fn param<'a>(self) -> Vec<(&'a str, &'a str)> {
 		use self::Sort::*;
 		match self {
@@ -96,6 +98,7 @@ impl Sort {
 	}
 }
 
+/// Time parameter of a subreddit sort
 pub enum SortTime {
 	Hour,
 	Day,
