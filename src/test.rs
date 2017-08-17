@@ -1,4 +1,6 @@
 use super::*;
+use std::time::Duration;
+use std::thread;
 
 fn init_reddit() -> Reddit {
 	use std::env;
@@ -43,7 +45,26 @@ fn test_auth() {
 	init_reddit().get_user().unwrap();
 }
 
+#[test]
+fn comment_stream() {
+	let mut reddit = init_reddit();
+	let comments = reddit.get_comments("all".to_string());
+	
+	let mut count = 0;
+	
+	for comment in comments {
+		count += 1;
+		println!("Got comment #{}: {}", count, comment["data"]["author"]);
+		
+		if count > 512 {
+			break;
+		};
+	};
+	
+}
+
 //#[test(submit)]
+/*
 fn test_post() {
 	println!("{}", init_reddit().submit_self("pigasusland".to_string(), "Test Post".to_string(), "The time is dank-o-clock".to_string(), true).unwrap());
-}
+}*/
