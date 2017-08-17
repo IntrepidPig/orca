@@ -21,7 +21,7 @@ pub struct Connection {
 impl Connection {
 	pub fn new(appname: String, appversion: String, appauthor: String) -> Connection {
 		let useragent = UserAgent::new(format!("orca:{}:{} (by {})", appname, appversion, appauthor));
-		Connection { auth: None, useragent, client: Client::new().unwrap(), lastreq: Instant::now() - Duration::new(2, 0) }
+		Connection { auth: None, useragent, client: Client::new().unwrap(), lastreq: Instant::now() }
 	}
 	
 	pub fn run_request(&self, req: Request) -> Result<json::Value, ()> {
