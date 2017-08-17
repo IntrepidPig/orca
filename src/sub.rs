@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::thread;
+use std::time::Duration;
 
 use json::Value;
+use http::{Request, Method, Url};
 
 use net::Connection;
 
@@ -29,13 +32,17 @@ impl<'a> Comments<'a> { // TODO fix all the unwraps
 		let mut params: HashMap<String, String> = HashMap::new();
 		if let Some(last) = self.last.clone() {
 			params.insert("before".to_string(), last);
+			params.insert("limit".to_string(), "500".to_string());
 		}
 		
-		let req = self.conn.client.get(&format!("https://www.reddit.com/r/{}/comments/.json", self.sub))
-				.unwrap().form(&params).unwrap().build();
+		let req = Request::new(Method::Get,
+		                       Url::parse_with_params(&format!("https://www.reddit.com/r/{}/comments/.json", self.sub), params).unwrap());
+		
+		println!("Request formatted: {:?}", req);
 		
 		let resp = self.conn.run_request(req).unwrap();
-		self.last = Some(resp["data"]["after"].as_str().unwrap().to_string());
+		
+		self.last = Some(resp["data"]["children"][0]["data"]["name"].as_str().unwrap_or_default().to_string());
 		
 		let mut new: VecDeque<Value> = VecDeque::from(resp["data"]["children"].as_array().unwrap().to_owned());
 		
@@ -52,12 +59,11 @@ impl<'a> Iterator for Comments<'a> {
 		if let Some(val) = self.cache.pop_front() {
 			Some(val)
 		} else {
-			self.refresh();
-			if let Some(val) = self.cache.pop_front() {
-				Some(val)
-			} else {
-				None
+			while self.cache.len() == 0 {
+				self.refresh();
+				thread::sleep(Duration::from_secs(2));
 			}
+			self.cache.pop_front()
 		}
 	}
 }
