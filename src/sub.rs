@@ -26,9 +26,9 @@ impl<'a> Comments<'a> { // TODO fix all the unwraps
 	}
 	
 	pub fn refresh(&mut self) {
-		let mut params: HashMap<&str, &str> = HashMap::new();
+		let mut params: HashMap<String, String> = HashMap::new();
 		if let Some(last) = self.last.clone() {
-			params.insert("before", &last);
+			params.insert("before".to_string(), last);
 		}
 		
 		let req = self.conn.client.get(&format!("https://www.reddit.com/r/{}/comments/.json", self.sub))
@@ -49,11 +49,11 @@ impl<'a> Iterator for Comments<'a> {
 	/// If recieved None, it has already refreshed and recieved no comments. Applications using this
 	/// iterator should sleep on recieving None from this function
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some(val) = self.cache.pop() {
+		if let Some(val) = self.cache.pop_front() {
 			Some(val)
 		} else {
 			self.refresh();
-			if let Some(val) = self.cache.pop() {
+			if let Some(val) = self.cache.pop_front() {
 				Some(val)
 			} else {
 				None
