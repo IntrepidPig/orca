@@ -23,16 +23,19 @@ pub mod net;
 /// Subreddit functionality
 pub mod sub;
 
+/// Reddit data structures
+pub mod data;
+
 use net::auth::{Auth, AuthError, OauthApp};
 
 /// A reddit object
 /// ## Usage:
 /// To create a new instance, use Reddit::new()
-pub struct Reddit {
+pub struct App {
 	conn: net::Connection,
 }
 
-impl Reddit {
+impl App {
 	/// Create a new reddit instance
 	/// # Arguments
 	/// * `appname` - Unique app name
@@ -40,8 +43,8 @@ impl Reddit {
 	/// * `appauthor` - Auther of the app
 	/// # Returns
 	/// A new reddit object
-	pub fn new(appname: &str, appversion: &str, appauthor: &str) -> Reddit {
-		Reddit {
+	pub fn new(appname: &str, appversion: &str, appauthor: &str) -> App {
+		App {
 			conn: net::Connection::new(appname.to_string(), appversion.to_string(), appauthor.to_string())
 		}
 	}

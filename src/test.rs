@@ -2,10 +2,10 @@ use super::*;
 use std::time::Duration;
 use std::thread;
 
-fn init_reddit() -> Reddit {
+fn init_reddit() -> App {
 	use std::env;
 	
-	let mut reddit = Reddit::new("OrcaLibTest", "v0.0.2", "/u/IntrepidPig/");
+	let mut reddit = App::new("OrcaLibTest", "v0.0.2", "/u/IntrepidPig/");
 	
 	let id = match env::var("REDDIT_APP_ID") {
 		Ok(id) => id,
