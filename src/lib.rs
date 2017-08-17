@@ -70,4 +70,9 @@ impl Reddit {
 		
 		self.conn.run_auth_request(req)
 	}
+	
+	/// Get a iterator of all comments in order of being posted
+	fn get_comments(&self, sub: String) -> sub::Comments {
+		sub::Comments::new(&self.conn, sub)
+	}
 }
