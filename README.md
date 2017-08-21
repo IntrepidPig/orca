@@ -17,6 +17,10 @@ A simple reddit API interface for Rust
 - Better documentation
 - More reddit api implementation
 
+
+### Contributing
+If you have ever made a pull request on github before you probably know more about it than me. I would really appreciate any help on this project, so if you have an idea on how to improve it, please feel free to submit an issue or pull request.
+
 ### Example: Recursively traversing a comment tree
 ```rust
 fn print_tree(listing: Listing<Comment>, level: i32) {
