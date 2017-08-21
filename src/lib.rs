@@ -20,13 +20,11 @@ mod test;
 /// Functionality for communication with reddit.com
 pub mod net;
 
-/// Subreddit functionality
-pub mod sub;
-
 /// Reddit data structures
 pub mod data;
 
 use net::auth::{Auth, AuthError, OauthApp};
+use data::{Listing, CommentData, Comment, Comments, Sort, SortTime};
 
 /// A reddit object
 /// ## Usage:
@@ -67,7 +65,7 @@ impl App {
 	/// * `sort` - Sort method of query
 	/// # Returns
 	/// A result containing a json listing of posts
-	pub fn get_posts(&mut self, sub: String, sort: sub::Sort) -> Result<json::Value, ()> {
+	pub fn get_posts(&mut self, sub: String, sort: Sort) -> Result<json::Value, ()> {
 		let req = Request::new(Method::Get,
 		                       Url::parse_with_params(&format!("https://www.reddit.com/r/{}/.json", sub),
 		                                              sort.param()).unwrap());
@@ -110,7 +108,16 @@ impl App {
 	/// Get a iterator of all comments in order of being posted
 	/// # Arguments
 	/// * `sub` - Name of the subreddit to pull comments from. Can be 'all' to pull from all of reddit
-	pub fn get_comments(&mut self, sub: String) -> sub::Comments {
-		sub::Comments::new(&mut self.conn, sub)
+	pub fn get_comments(&mut self, sub: String) -> Comments {
+		Comments::new(&mut self.conn, sub)
+	}
+	
+	pub fn get_comment_tree(&mut self, post: String) -> Listing<Comment> { // TODO add sorting and shit
+		let req = self.conn.client.get(Url::parse(&format!("https://www.reddit.com/comments/{}/.json", post)).unwrap()).unwrap().build();
+		
+		let data = self.conn.run_request(req).unwrap();
+		let data = data[1].clone();
+		
+		Listing::from_value(&data).expect("failed to parse listing")
 	}
 }

@@ -32,12 +32,12 @@ fn init_reddit() -> App {
 
 #[test]
 fn get_posts() {
-	init_reddit().get_posts("unixporn".to_string(), sub::Sort::Top(sub::SortTime::All)).unwrap();
+	init_reddit().get_posts("unixporn".to_string(), Sort::Top(SortTime::All)).unwrap();
 }
 
 #[test]
 fn post_sort() {
-	assert_eq!(sub::Sort::Top(sub::SortTime::All).param(), &[("sort", "top"), ("t", "all")])
+	assert_eq!(Sort::Top(SortTime::All).param(), &[("sort", "top"), ("t", "all")])
 }
 
 #[test]
@@ -54,13 +54,40 @@ fn comment_stream() {
 	
 	for comment in comments {
 		count += 1;
-		println!("Got comment #{}: {}", count, comment.author);
+		match comment {
+			Comment::Loaded(data) => {
+				println!("Got comment #{} by {}", count, data.author);
+			},
+			_ => { panic!("This was not supposed to happen") }
+		}
 		
-		if count > 512 {
+		if count > 128 {
 			break;
 		};
 	};
+}
+
+#[test]
+fn comment_tree() {
+	let mut reddit = init_reddit();
+	let tree = reddit.get_comment_tree("6uvvyy".to_string());
 	
+	fn print_tree(listing: Listing<Comment>, level: i32) {
+		for comment in listing {
+			match comment {
+				Comment::Loaded(data) => {
+					for _ in 0..level {
+						print!("\t");
+					}
+					println!("Comment by {}", data.author);
+					print_tree(data.replies, level + 1);
+				},
+				_ => {},
+			}
+		}
+	};
+	
+	print_tree(tree, 0);
 }
 
 //#[test(submit)]

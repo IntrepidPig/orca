@@ -8,8 +8,7 @@ use json::Value;
 use http::{Request, Method, Url};
 
 use net::Connection;
-use data::Listing;
-use data::Comment;
+use data::{Listing, Comment, CommentData};
 
 pub struct Comments<'a> {
 	sub: String,
@@ -45,7 +44,7 @@ impl<'a> Comments<'a> { // TODO fix all the unwraps
 		
 		self.last = Some(resp["data"]["children"][0]["data"]["name"].as_str().unwrap_or_default().to_string());
 		
-		let new: Listing<Comment> = Listing::from_value(resp).unwrap();
+		let new: Listing<Comment> = Listing::from_value(&resp).unwrap();
 		
 		self.cache.append(&mut VecDeque::from(new.children));
 	}
@@ -54,8 +53,6 @@ impl<'a> Comments<'a> { // TODO fix all the unwraps
 impl<'a> Iterator for Comments<'a> {
 	type Item = Comment;
 	
-	/// If recieved None, it has already refreshed and recieved no comments. Applications using this
-	/// iterator should sleep on recieving None from this function
 	fn next(&mut self) -> Option<Self::Item> {
 		if let Some(val) = self.cache.pop_front() {
 			Some(val)
