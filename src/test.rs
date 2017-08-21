@@ -4,26 +4,19 @@ use std::thread;
 
 fn init_reddit() -> App {
 	use std::env;
+	let get_env = |var| -> String {
+		match env::var(var) {
+			Ok(item) => item,
+			_ => panic!("{} must be set", var),
+		}
+	};
+	
+	let username = get_env("REDDIT_USERNAME");
+	let password = get_env("REDDIT_PASSWORD");
+	let id = get_env("REDDIT_APP_ID");
+	let secret = get_env("REDDIT_APP_SECRET");
 	
 	let mut reddit = App::new("OrcaLibTest", "v0.0.2", "/u/IntrepidPig/");
-	
-	let id = match env::var("REDDIT_APP_ID") {
-		Ok(id) => id,
-		Err(_) => panic!("REDDIT_APP_ID must be set")
-	};
-	
-	let secret = match env::var("REDDIT_APP_SECRET") {
-		Ok(secret) => secret,
-		Err(_) => panic!("REDDIT_APP_SECRET must be set")
-	};
-	let username = match env::var("REDDIT_USERNAME") {
-		Ok(username) => username,
-		Err(_) => panic!("REDDIT_USERNAME must be set")
-	};
-	let password = match env::var("REDDIT_PASSWORD") {
-		Ok(password) => password,
-		Err(_) => panic!("REDDIT_PASSWORD must be set")
-	};
 	
 	reddit.conn.auth = Some(reddit.authorize(username, password, net::auth::OauthApp::Script(id, secret)).unwrap());
 	
