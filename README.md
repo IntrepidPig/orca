@@ -11,6 +11,7 @@ A simple reddit API interface for Rust
 - Listing data structure
 
 ### Features Todo (nonexhaustive):
+- Up next: error_chain integration for actual error handling instead of unwrap
 - All data structures
 - Comment posting
 - Oauth installed app type
