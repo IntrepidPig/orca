@@ -14,11 +14,11 @@ pub struct Comments<'a> {
 	sub: String,
 	cache: VecDeque<Comment>,
 	last: Option<String>,
-	conn: &'a mut Connection,
+	conn: &'a Connection,
 }
 
 impl<'a> Comments<'a> { // TODO fix all the unwraps
-	pub fn new(conn: &'a mut Connection, sub: String) -> Comments<'a> {
+	pub fn new(conn: &'a Connection, sub: String) -> Comments<'a> {
 		let cache: VecDeque<Comment> = VecDeque::new();
 		let last = None;
 		

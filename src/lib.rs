@@ -65,7 +65,7 @@ impl App {
 	/// * `sort` - Sort method of query
 	/// # Returns
 	/// A result containing a json listing of posts
-	pub fn get_posts(&mut self, sub: String, sort: Sort) -> Result<json::Value, ()> {
+	pub fn get_posts(&self, sub: String, sort: Sort) -> Result<json::Value, ()> {
 		let req = Request::new(Method::Get,
 		                       Url::parse_with_params(&format!("https://www.reddit.com/r/{}/.json", sub),
 		                                              sort.param()).unwrap());
@@ -80,7 +80,7 @@ impl App {
 	/// * `text` - Body of the post
 	/// # Returns
 	/// A result with reddit's json response to the submission
-	pub fn submit_self(&mut self, sub: String, title: String, text: String, sendreplies: bool) -> Result<json::Value, ()> {
+	pub fn submit_self(&self, sub: String, title: String, text: String, sendreplies: bool) -> Result<json::Value, ()> {
 		let mut params: HashMap<&str, &str> = HashMap::new();
 		params.insert("sr", &sub);
 		params.insert("kind", "self");
@@ -99,7 +99,7 @@ impl App {
 	/// Note: requires connection to be authorized
 	/// # Returns
 	/// A result with the json value of the user data
-	pub fn get_user(&mut self) -> Result<json::Value, ()> {
+	pub fn get_user(&self) -> Result<json::Value, ()> {
 		let req = Request::new(Method::Get, Url::parse("https://oauth.reddit.com/api/v1/me/.json").unwrap());
 		
 		self.conn.run_auth_request(req)
@@ -108,16 +108,30 @@ impl App {
 	/// Get a iterator of all comments in order of being posted
 	/// # Arguments
 	/// * `sub` - Name of the subreddit to pull comments from. Can be 'all' to pull from all of reddit
-	pub fn get_comments(&mut self, sub: String) -> Comments {
-		Comments::new(&mut self.conn, sub)
+	pub fn get_comments(&self, sub: String) -> Comments {
+		Comments::new(&self.conn, sub)
 	}
 	
-	pub fn get_comment_tree(&mut self, post: String) -> Listing<Comment> { // TODO add sorting and shit
+	pub fn get_comment_tree(&self, post: String) -> Listing<Comment> { // TODO add sorting and shit
 		let req = self.conn.client.get(Url::parse(&format!("https://www.reddit.com/comments/{}/.json", post)).unwrap()).unwrap().build();
 		
 		let data = self.conn.run_request(req).unwrap();
 		let data = data[1].clone();
 		
 		Listing::from_value(&data).expect("failed to parse listing")
+	}
+	
+	pub fn comment(&self, text: String, thing: String) {
+		let mut params: HashMap<&str, &str> = HashMap::new();
+		params.insert("text", &text);
+		params.insert("thing_id", &thing);
+		
+		let req = self.conn.client.post(Url::parse(&format!("https://oauth.reddit.com/api/comment")).unwrap())
+				.unwrap()
+				.form(&params)
+				.unwrap()
+				.build();
+		
+		self.conn.run_auth_request(req).unwrap();
 	}
 }

@@ -4,6 +4,7 @@ pub mod auth;
 use std::io::Read;
 use std::time::{Duration, Instant};
 use std::thread;
+use std::cell::Cell;
 
 use json;
 use http::{Client, Request, Method, Url};
@@ -15,19 +16,19 @@ pub struct Connection {
 	pub auth: Option<auth::Auth>,
 	pub useragent: UserAgent,
 	pub client: Client,
-	lastreq: Instant,
+	lastreq: Cell<Instant>,
 }
 
 impl Connection {
 	pub fn new(appname: String, appversion: String, appauthor: String) -> Connection {
 		let useragent = UserAgent::new(format!("orca:{}:{} (by {})", appname, appversion, appauthor));
-		Connection { auth: None, useragent, client: Client::new().unwrap(), lastreq: Instant::now() }
+		Connection { auth: None, useragent, client: Client::new().unwrap(), lastreq: Cell::new(Instant::now()) }
 	}
 	
-	pub fn run_request(&mut self, req: Request) -> Result<json::Value, ()> {
-		if self.lastreq.elapsed() < Duration::new(2, 0) {
+	pub fn run_request(&self, req: Request) -> Result<json::Value, ()> {
+		if self.lastreq.get().elapsed() < Duration::new(2, 0) {
 			let now = Instant::now();
-			let targetinstant = self.lastreq + Duration::new(2, 150000000);
+			let targetinstant = self.lastreq.get() + Duration::new(2, 150000000);
 			thread::sleep(targetinstant - now);
 		}
 		
@@ -42,11 +43,12 @@ impl Connection {
 			Err(())
 		};
 		
-		self.lastreq = Instant::now();
+		let tmp = Instant::now();
+		self.lastreq.set(tmp);
 		result
 	}
 	
-	pub fn run_auth_request(&mut self, mut req: Request) -> Result<json::Value, ()> {
+	pub fn run_auth_request(&self, mut req: Request) -> Result<json::Value, ()> {
 		if let Some(ref auth) = self.auth.clone() {
 			req.headers_mut().set(Authorization(
 				Bearer {
