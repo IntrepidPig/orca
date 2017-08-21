@@ -30,7 +30,7 @@ use data::{Listing, CommentData, Comment, Comments, Sort, SortTime};
 /// ## Usage:
 /// To create a new instance, use Reddit::new()
 pub struct App {
-	conn: net::Connection,
+	pub conn: net::Connection,
 }
 
 impl App {
