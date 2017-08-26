@@ -36,7 +36,7 @@ use data::{Listing, CommentData, Comment, Comments, Sort, SortTime};
 
 /// A reddit object
 /// ## Usage:
-/// To create a new instance, use Reddit::new()
+/// To create a new instance, use `Reddit::new()`
 pub struct App {
 	pub conn: net::Connection,
 }
@@ -134,7 +134,7 @@ impl App {
 		params.insert("text", &text);
 		params.insert("thing_id", &thing);
 		
-		let req = self.conn.client.post(Url::parse(&format!("https://oauth.reddit.com/api/comment")).unwrap())
+		let req = self.conn.client.post(Url::parse("https://oauth.reddit.com/api/comment").unwrap())
 				.unwrap()
 				.form(&params)
 				.unwrap()

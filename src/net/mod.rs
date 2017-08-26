@@ -30,7 +30,7 @@ impl Connection {
 	pub fn run_request(&self, req: Request) -> Result<Value> {
 		if self.lastreq.get().elapsed() < Duration::new(2, 0) {
 			let now = Instant::now();
-			let targetinstant = self.lastreq.get() + Duration::new(2, 150000000);
+			let targetinstant = self.lastreq.get() + Duration::new(2, 150_000_000);
 			thread::sleep(targetinstant - now);
 		}
 		

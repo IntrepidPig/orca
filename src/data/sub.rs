@@ -57,7 +57,7 @@ impl<'a> Iterator for Comments<'a> {
 		if let Some(val) = self.cache.pop_front() {
 			Some(val)
 		} else {
-			while self.cache.len() == 0 {
+			while self.cache.is_empty() {
 				self.refresh();
 			}
 			self.cache.pop_front()

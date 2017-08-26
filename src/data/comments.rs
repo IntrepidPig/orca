@@ -6,7 +6,7 @@ use data::listing::Listing;
 
 #[derive(Clone)]
 pub enum Comment {
-	Loaded(CommentData),
+	Loaded(Box<CommentData>),
 	NotLoaded(String)
 }
 
@@ -14,9 +14,9 @@ impl Comment {
 	pub fn from_value(val: &Value) -> Result<Comment> {
 		let raw = val.clone();
 		let val = &val["data"];
-		let edited = match &val["edited"] {
-			&Value::Bool(_) => None,
-			&Value::Number(ref num) => num.as_f64(),
+		let edited = match val["edited"] {
+			Value::Bool(_) => None,
+			Value::Number(ref num) => num.as_f64(),
 			//&Value::Null => None,
 			_ => { panic!("Unexpected value for \"edited\": {}", val["edited"]); }
 		};
@@ -72,7 +72,7 @@ impl Comment {
 			_ => { panic!("Unexpected value for \"replies\": {}", val["replies"])}
 		};
 		
-		Ok(Comment::Loaded(CommentData {
+		Ok(Comment::Loaded(Box::new(CommentData {
 			edited,
 			id,
 			author,
@@ -87,7 +87,7 @@ impl Comment {
 			name,
 			replies,
 			raw
-		}))
+		})))
 	}
 }
 

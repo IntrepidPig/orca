@@ -48,17 +48,17 @@ pub enum AuthError<'a> {
 }
 
 impl Auth {
-    fn get_token<'a>(conn: &Connection, app: &OauthApp, username: &String, password: &String) -> Result<String> {
+    fn get_token(conn: &Connection, app: &OauthApp, username: &str, password: &str) -> Result<String> {
         use self::OauthApp::*;
-        match app {
-            &Script(ref id, ref secret) => {
+        match *app {
+            Script(ref id, ref secret) => {
                 let mut tokenreq = conn.client
                     .post("https://ssl.reddit.com/api/v1/access_token")
                     .chain_err(|| "Failed to send request")?;
                 let mut params: HashMap<&str, &str> = HashMap::new();
                 params.insert("grant_type", "password");
-                params.insert("username", &username);
-                params.insert("password", &password);
+                params.insert("username", username);
+                params.insert("password", password);
                 let tokenreq = tokenreq.header(conn.useragent.clone())
                     .basic_auth(id.clone(), Some(secret.clone()))
                     .form(&params)
