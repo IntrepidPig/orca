@@ -33,14 +33,22 @@ fn post_sort() {
 	assert_eq!(Sort::Top(SortTime::All).param(), &[("sort", "top"), ("t", "all")])
 }
 
-#[test]
+#[test(auth)]
 fn test_auth() {
-	init_reddit().get_user().unwrap();
+	init_reddit().get_self().unwrap();
+}
+
+#[test(auth)]
+fn self_info() {
+	let reddit = init_reddit();
+
+	let user = reddit.get_self().unwrap();
+	println!("Me:\n{}", json::to_string_pretty(&user).unwrap());
 }
 
 #[test]
 fn comment_stream() {
-	let mut reddit = init_reddit();
+	let reddit = init_reddit();
 	let comments = reddit.get_comments("all".to_string());
 	
 	let mut count = 0;
@@ -54,7 +62,7 @@ fn comment_stream() {
 			_ => { panic!("This was not supposed to happen") }
 		}
 		
-		if count > 128 {
+		if count > 30 {
 			break;
 		};
 	};
@@ -62,7 +70,7 @@ fn comment_stream() {
 
 #[test]
 fn comment_tree() {
-	let mut reddit = init_reddit();
+	let reddit = init_reddit();
 	let tree = reddit.get_comment_tree("2np694".to_string());
 	
 	fn print_tree(listing: Listing<Comment>, level: i32) {
