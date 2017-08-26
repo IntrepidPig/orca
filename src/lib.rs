@@ -107,7 +107,7 @@ impl App {
 	/// Note: requires connection to be authorized
 	/// # Returns
 	/// A result with the json value of the user data
-	pub fn get_user(&self) -> Result<Value> {
+	pub fn get_self(&self) -> Result<Value> {
 		let req = Request::new(Method::Get, Url::parse("https://oauth.reddit.com/api/v1/me/.json").unwrap());
 		
 		self.conn.run_auth_request(req)
