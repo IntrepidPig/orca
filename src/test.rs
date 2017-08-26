@@ -63,7 +63,7 @@ fn comment_stream() {
 #[test]
 fn comment_tree() {
 	let mut reddit = init_reddit();
-	let tree = reddit.get_comment_tree("6uvvyy".to_string());
+	let tree = reddit.get_comment_tree("2np694".to_string());
 	
 	fn print_tree(listing: Listing<Comment>, level: i32) {
 		for comment in listing {
