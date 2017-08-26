@@ -4,6 +4,7 @@ use json;
 use json::Value;
 use serde::de::Error;
 
+use errors::*;
 use data::{CommentData, Comment};
 
 #[derive(Clone)]
@@ -26,14 +27,14 @@ impl<T> Iterator for Listing<T> {
 }
 
 impl Listing<Comment> {
-	pub fn from_value(listing: &Value) -> Result<Listing<Comment>, json::Error> {
+	pub fn from_value(listing: &Value) -> Result<Listing<Comment>> {
 		let mut children: VecDeque<Comment> = VecDeque::new();
 		
 		if let Some(array) = listing["data"]["children"].as_array() {
 			for item in array {
 				let kind = item["kind"].as_str().unwrap();
 				if kind == "t1" {
-					children.push_back(Comment::from_value(item).unwrap());
+					children.push_back(Comment::from_value(item).chain_err(|| "Invalid comment json")?);
 				} else if kind == "more" {
 					for extra in item["data"]["children"].as_array().unwrap() {
 						children.push_back(Comment::NotLoaded(extra.as_str().unwrap().to_string()));
@@ -43,7 +44,7 @@ impl Listing<Comment> {
 			
 			Ok(Listing { children })
 		} else {
-			Err(json::Error::custom("Couldn't parse as array"))
+			Err(ErrorKind::InvalidJson(json::to_string(listing).unwrap()).into())
 		}
 	}
 }

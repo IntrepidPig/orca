@@ -1,6 +1,7 @@
 use json;
 use json::Value;
 
+use errors::*;
 use data::listing::Listing;
 
 #[derive(Clone)]
@@ -10,7 +11,7 @@ pub enum Comment {
 }
 
 impl Comment {
-	pub fn from_value(val: &Value) -> Result<Comment, ()> {
+	pub fn from_value(val: &Value) -> Result<Comment> {
 		let raw = val.clone();
 		let val = &val["data"];
 		let edited = match &val["edited"] {
@@ -19,7 +20,10 @@ impl Comment {
 			//&Value::Null => None,
 			_ => { panic!("Unexpected value for \"edited\": {}", val["edited"]); }
 		};
-		let id: String = val["id"].as_str().unwrap().to_string();
+		let id: String = match val["id"].as_str() {
+			Some(t) => t.to_string(),
+			None => return Err(ErrorKind::InvalidJson(json::to_string(val).unwrap()).into()),
+		};
 		let author: String = val["author"].as_str().unwrap().to_string();
 		let ups: i64 = val["ups"].as_i64().unwrap();
 		let downs: i64 = val["downs"].as_i64().unwrap();

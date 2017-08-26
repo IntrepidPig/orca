@@ -7,11 +7,14 @@ extern crate serde_derive;
 #[macro_use]
 extern crate serde_json as json;
 extern crate reqwest as http;
+#[macro_use]
+extern crate error_chain;
 
 use std::fmt;
 use std::fmt::Display;
 use std::collections::HashMap;
 
+use json::Value;
 use http::{Request, RequestBuilder, Url, Method};
 
 #[cfg(test)]
@@ -23,6 +26,11 @@ pub mod net;
 /// Reddit data structures
 pub mod data;
 
+/// Errors
+pub mod errors;
+use errors::*;
+
+use net::{Connection};
 use net::auth::{Auth, AuthError, OauthApp};
 use data::{Listing, CommentData, Comment, Comments, Sort, SortTime};
 
@@ -41,10 +49,10 @@ impl App {
 	/// * `appauthor` - Auther of the app
 	/// # Returns
 	/// A new reddit object
-	pub fn new(appname: &str, appversion: &str, appauthor: &str) -> App {
-		App {
-			conn: net::Connection::new(appname.to_string(), appversion.to_string(), appauthor.to_string())
-		}
+	pub fn new(appname: &str, appversion: &str, appauthor: &str) -> Result<App> {
+		Ok(App {
+			conn: Connection::new(appname.to_string(), appversion.to_string(), appauthor.to_string()).chain_err(|| "Failed to initialize reddit connection")?
+		})
 	}
 	
 	/// Return an Auth object for use with API calls that require a user account to work
@@ -55,7 +63,7 @@ impl App {
 	/// # Returns
 	/// A result containing either an Auth object or a certain error
 	/// To use place it in the auth field of a connection struct
-	pub fn authorize(&self, username: String, password: String, oauth: net::auth::OauthApp) -> Result<Auth, AuthError> {
+	pub fn authorize(&self, username: String, password: String, oauth: net::auth::OauthApp) -> Result<Auth> {
 		Auth::new(&self.conn, oauth, username, password)
 	}
 	
@@ -65,7 +73,7 @@ impl App {
 	/// * `sort` - Sort method of query
 	/// # Returns
 	/// A result containing a json listing of posts
-	pub fn get_posts(&self, sub: String, sort: Sort) -> Result<json::Value, ()> {
+	pub fn get_posts(&self, sub: String, sort: Sort) -> Result<Value> {
 		let req = Request::new(Method::Get,
 		                       Url::parse_with_params(&format!("https://www.reddit.com/r/{}/.json", sub),
 		                                              sort.param()).unwrap());
@@ -80,7 +88,7 @@ impl App {
 	/// * `text` - Body of the post
 	/// # Returns
 	/// A result with reddit's json response to the submission
-	pub fn submit_self(&self, sub: String, title: String, text: String, sendreplies: bool) -> Result<json::Value, ()> {
+	pub fn submit_self(&self, sub: String, title: String, text: String, sendreplies: bool) -> Result<Value> {
 		let mut params: HashMap<&str, &str> = HashMap::new();
 		params.insert("sr", &sub);
 		params.insert("kind", "self");
@@ -99,7 +107,7 @@ impl App {
 	/// Note: requires connection to be authorized
 	/// # Returns
 	/// A result with the json value of the user data
-	pub fn get_user(&self) -> Result<json::Value, ()> {
+	pub fn get_user(&self) -> Result<Value> {
 		let req = Request::new(Method::Get, Url::parse("https://oauth.reddit.com/api/v1/me/.json").unwrap());
 		
 		self.conn.run_auth_request(req)

@@ -15,8 +15,10 @@ fn init_reddit() -> App {
 	let password = get_env("REDDIT_PASSWORD");
 	let id = get_env("REDDIT_APP_ID");
 	let secret = get_env("REDDIT_APP_SECRET");
+
+	println!("user: {}, pass: {}, id: {}, secret: {}", username, password, id, secret);
 	
-	let mut reddit = App::new("OrcaLibTest", "v0.0.2", "/u/IntrepidPig/");
+	let mut reddit = App::new("OrcaLibTest", "v0.0.2", "/u/IntrepidPig/").unwrap();
 	
 	reddit.conn.auth = Some(reddit.authorize(username, password, net::auth::OauthApp::Script(id, secret)).unwrap());
 	
