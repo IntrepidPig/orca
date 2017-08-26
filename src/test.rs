@@ -38,7 +38,7 @@ fn test_auth() {
 	init_reddit().get_self().unwrap();
 }
 
-#[test(self)]
+#[test(selfuser)]
 fn self_info() {
 	let reddit = init_reddit();
 
