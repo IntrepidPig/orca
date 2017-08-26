@@ -23,12 +23,12 @@ fn init_reddit() -> App {
 	reddit
 }
 
-#[test]
+#[test(posts)]
 fn get_posts() {
 	init_reddit().get_posts("unixporn".to_string(), Sort::Top(SortTime::All)).unwrap();
 }
 
-#[test]
+#[test(sort)]
 fn post_sort() {
 	assert_eq!(Sort::Top(SortTime::All).param(), &[("sort", "top"), ("t", "all")])
 }
@@ -46,7 +46,7 @@ fn self_info() {
 	println!("Me:\n{}", json::to_string_pretty(&user).unwrap());
 }
 
-#[test]
+#[test(stream)]
 fn comment_stream() {
 	let reddit = init_reddit();
 	let comments = reddit.get_comments("all".to_string());
@@ -68,7 +68,7 @@ fn comment_stream() {
 	};
 }
 
-#[test]
+#[test(tree)]
 fn comment_tree() {
 	let reddit = init_reddit();
 	let tree = reddit.get_comment_tree("2np694".to_string());
