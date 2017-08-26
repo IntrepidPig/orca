@@ -10,6 +10,7 @@ A simple reddit API interface for Rust
 - Comment data structure
 - Listing data structure
 - Comment submissions
+- Automatic ratelimiting
 
 ### Features Todo (nonexhaustive):
 - Up next: error_chain integration for actual error handling instead of unwrap (partially implemented)
