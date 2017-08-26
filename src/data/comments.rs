@@ -24,16 +24,46 @@ impl Comment {
 			Some(t) => t.to_string(),
 			None => return Err(ErrorKind::InvalidJson(json::to_string(val).unwrap()).into()),
 		};
-		let author: String = val["author"].as_str().unwrap().to_string();
-		let ups: i64 = val["ups"].as_i64().unwrap();
-		let downs: i64 = val["downs"].as_i64().unwrap();
-		let score: i64 = val["score"].as_i64().unwrap();
-		let body: String = val["body"].as_str().unwrap().to_string();
-		let is_submitter: bool = val["is_submitter"].as_bool().unwrap();
-		let stickied: bool = val["stickied"].as_bool().unwrap();
-		let subreddit: String = val["subreddit"].as_str().unwrap().to_string();
-		let score_hidden: bool = val["score_hidden"].as_bool().unwrap();
-		let name: String = val["name"].as_str().unwrap().to_string();
+		let author: String = match val["author"].as_str() {
+			Some(t) => t.to_string(),
+			None => return Err(ErrorKind::InvalidJson(json::to_string(val).unwrap()).into()),
+		};
+		let ups: i64 = match val["ups"].as_i64() {
+			Some(t) => t,
+			None => return Err(ErrorKind::InvalidJson(json::to_string(val).unwrap()).into()),
+		};
+		let downs: i64 = match val["downs"].as_i64() {
+			Some(t) => t,
+			None => return Err(ErrorKind::InvalidJson(json::to_string(val).unwrap()).into()),
+		};
+		let score: i64 = match val["score"].as_i64() {
+			Some(t) => t,
+			None => return Err(ErrorKind::InvalidJson(json::to_string(val).unwrap()).into()),
+		};
+		let body: String = match val["body"].as_str() {
+			Some(t) => t.to_string(),
+			None => return Err(ErrorKind::InvalidJson(json::to_string(val).unwrap()).into()),
+		};
+		let is_submitter: bool = match val["is_submitter"].as_bool() {
+			Some(t) => t,
+			None => return Err(ErrorKind::InvalidJson(json::to_string(val).unwrap()).into()),
+		};
+		let stickied: bool = match val["stickied"].as_bool() {
+			Some(t) => t,
+			None => return Err(ErrorKind::InvalidJson(json::to_string(val).unwrap()).into()),
+		};
+		let subreddit: String = match val["subreddit"].as_str() {
+			Some(t) => t.to_string(),
+			None => return Err(ErrorKind::InvalidJson(json::to_string(val).unwrap()).into()),
+		};
+		let score_hidden: bool = match val["score_hidden"].as_bool() {
+			Some(t) => t,
+			None => return Err(ErrorKind::InvalidJson(json::to_string(val).unwrap()).into()),
+		};
+		let name: String = match val["name"].as_str() {
+			Some(t) => t.to_string(),
+			None => return Err(ErrorKind::InvalidJson(json::to_string(val).unwrap()).into()),
+		};
 		let replies: Listing<Comment> = match val["replies"] {
 			Value::String(_) => Listing::empty(),
 			Value::Object(_) => {
