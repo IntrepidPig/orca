@@ -1,7 +1,7 @@
 use json;
 use json::Value;
 
-use errors::*;
+use errors::{Error, ErrorKind, Result, ResultExt};
 use data::listing::Listing;
 
 #[derive(Clone)]

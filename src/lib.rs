@@ -28,7 +28,7 @@ pub mod data;
 
 /// Errors
 pub mod errors;
-use errors::*;
+use errors::{Error, ErrorKind, Result, ResultExt};
 
 use net::{Connection};
 use net::auth::{Auth, AuthError, OauthApp};

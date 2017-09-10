@@ -11,7 +11,7 @@ use json::Value;
 use http::{Client, Request, Method, Url};
 use http::header::{UserAgent, Authorization, Bearer};
 
-use errors::*;
+use errors::{Error, ErrorKind, Result, ResultExt};
 use self::auth::{Auth, OauthApp};
 
 pub struct Connection {

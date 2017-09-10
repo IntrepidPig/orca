@@ -2,9 +2,8 @@ use std::collections::VecDeque;
 
 use json;
 use json::Value;
-use serde::de::Error;
 
-use errors::*;
+use errors::{Error, ErrorKind, Result, ResultExt};
 use data::{CommentData, Comment};
 
 #[derive(Clone)]

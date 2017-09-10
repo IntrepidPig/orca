@@ -6,7 +6,7 @@ use http::header::UserAgent;
 use json;
 use json::Value;
 
-use errors::*;
+use errors::{Error, ErrorKind, Result, ResultExt};
 use net::Connection;
 
 
