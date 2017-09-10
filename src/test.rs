@@ -46,6 +46,14 @@ fn self_info() {
 	println!("Me:\n{}", json::to_string_pretty(&user).unwrap());
 }
 
+#[test(otheruser)]
+fn other_info() {
+	let reddit = init_reddit();
+	
+	let otherguy = reddit.get_user("DO_U_EVN_SPAGHETTI").unwrap();
+	println!("That one guy:\n{}", json::to_string_pretty(&otherguy).unwrap());
+}
+
 #[test(stream)]
 fn comment_stream() {
 	let reddit = init_reddit();

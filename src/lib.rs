@@ -112,6 +112,12 @@ impl App {
 		
 		self.conn.run_auth_request(req)
 	}
+
+	pub fn get_user(&self, name: &str) -> Result<Value> {
+		let req = Request::new(Method::Get, Url::parse(&format!("https://www.reddit.com/user/{}/about/.json", name)).unwrap());
+
+		self.conn.run_request(req)
+	}
 	
 	/// Get a iterator of all comments in order of being posted
 	/// # Arguments
@@ -120,6 +126,10 @@ impl App {
 		Comments::new(&self.conn, sub)
 	}
 	
+	/// Loads the comment tree of a post, returning a listing of the Comment enum, which can be
+	/// either Loaded or NotLoaded
+	/// # Arguments
+	/// * `post` - The name of the post to retrieve the tree from
 	pub fn get_comment_tree(&self, post: String) -> Listing<Comment> { // TODO add sorting and shit
 		let req = self.conn.client.get(Url::parse(&format!("https://www.reddit.com/comments/{}/.json", post)).unwrap()).unwrap().build();
 		
@@ -129,6 +139,10 @@ impl App {
 		Listing::from_value(&data).expect("failed to parse listing")
 	}
 	
+	/// Comment on a thing
+	/// # Arguments
+	/// * `text` - The body of the comment
+	/// * `thing` - Fullname of the thing to comment on
 	pub fn comment(&self, text: String, thing: String) {
 		let mut params: HashMap<&str, &str> = HashMap::new();
 		params.insert("text", &text);
