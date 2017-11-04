@@ -1,7 +1,7 @@
 use std::io::Read;
 use std::collections::HashMap;
 
-use http::{Request, RequestBuilder, Method, Url};
+use http::{Method, Request, RequestBuilder, Url};
 use http::header::UserAgent;
 use json;
 use json::Value;
@@ -49,17 +49,22 @@ pub enum AuthError<'a> {
 
 impl Auth {
     fn get_token(conn: &Connection, app: &OauthApp, username: &str, password: &str) -> Result<String> {
+		// TODO: get rid of unwraps and expects
         use self::OauthApp::*;
         match *app {
             Script(ref id, ref secret) => {
+				// Request for the bearer token
                 let mut tokenreq = conn.client
-                    .post("https://ssl.reddit.com/api/v1/access_token")
+                    .post("https://ssl.reddit.com/api/v1/access_token") // httpS is important
                     .chain_err(|| "Failed to send request")?;
+				// Insert authorization paramaters to request
                 let mut params: HashMap<&str, &str> = HashMap::new();
                 params.insert("grant_type", "password");
                 params.insert("username", username);
                 params.insert("password", password);
-                let tokenreq = tokenreq.header(conn.useragent.clone())
+				// I have no clue what's going on at this point
+                let tokenreq = tokenreq
+                    .header(conn.useragent.clone())
                     .basic_auth(id.clone(), Some(secret.clone()))
                     .form(&params)
                     .unwrap();
@@ -67,8 +72,7 @@ impl Auth {
                 if tokenresponse.status().is_success() {
                     let mut response = String::new();
                     tokenresponse.read_to_string(&mut response).unwrap();
-                    let responsejson: Value = json::from_str(&response)
-                        .expect("Got response in unknown format");
+                    let responsejson: Value = json::from_str(&response).expect("Got response in unknown format");
                     if let Some(token) = responsejson.get("access_token") {
                         let token = token.as_str().unwrap().to_string();
                         Ok(token)
@@ -79,6 +83,7 @@ impl Auth {
                     Err(ErrorKind::BadRequest.into())
                 }
             }
+			// App types other than script are unsupported right now
             _ => Err(ErrorKind::Unimplemented.into()),
         }
     }
@@ -93,14 +98,12 @@ impl Auth {
     /// * `password` - Password of the user to authenticate as
     pub fn new(conn: &Connection, app: OauthApp, username: String, password: String) -> Result<Auth> {
         match Auth::get_token(conn, &app, &username, &password) {
-            Ok(token) => {
-                Ok(Auth {
-                    app: app,
-                    username: username,
-                    password: password,
-                    token: token,
-                })
-            }
+            Ok(token) => Ok(Auth {
+                app: app,
+                username: username,
+                password: password,
+                token: token,
+            }),
             Err(err) => Err(err),
         }
     }
