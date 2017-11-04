@@ -94,14 +94,14 @@ impl Connection {
             }
         };
 
-		// Execute the request!
+        // Execute the request!
         let mut response = self.client
             .execute(req)
             .chain_err(|| "Failed to send request")?;
         let mut out = String::new();
         response.read_to_string(&mut out).chain_err(|| "Nice")?;
-		
-		// Set the last request time to now
+
+        // Set the last request time to now
         let tmp = Instant::now();
         self.lastreq.set(tmp);
 
@@ -110,6 +110,7 @@ impl Connection {
 
     /// Send a request to reddit with authorization headers
     pub fn run_auth_request(&self, mut req: Request) -> Result<Value> {
+        // Check if this connection is authorized
         if let Some(ref auth) = self.auth.clone() {
             req.headers_mut().set(Authorization(Bearer {
                 token: auth.token.clone(),

@@ -59,9 +59,9 @@ impl<'a> Comments<'a> {
                 .to_string(),
         );
 
-        let new: Listing<Comment> = Listing::from_value(&resp).unwrap();
+        let mut new: Listing<Comment> = Listing::from_value(&resp).unwrap();
 
-        self.cache.append(&mut VecDeque::from(new.children));
+        self.cache.append(&mut new.children);
     }
 }
 

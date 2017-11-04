@@ -49,20 +49,20 @@ pub enum AuthError<'a> {
 
 impl Auth {
     fn get_token(conn: &Connection, app: &OauthApp, username: &str, password: &str) -> Result<String> {
-		// TODO: get rid of unwraps and expects
+        // TODO: get rid of unwraps and expects
         use self::OauthApp::*;
         match *app {
             Script(ref id, ref secret) => {
-				// Request for the bearer token
+                // Request for the bearer token
                 let mut tokenreq = conn.client
                     .post("https://ssl.reddit.com/api/v1/access_token") // httpS is important
                     .chain_err(|| "Failed to send request")?;
-				// Insert authorization paramaters to request
+                // Insert authorization paramaters to request
                 let mut params: HashMap<&str, &str> = HashMap::new();
                 params.insert("grant_type", "password");
                 params.insert("username", username);
                 params.insert("password", password);
-				// I have no clue what's going on at this point
+                // I have no clue what's going on at this point
                 let tokenreq = tokenreq
                     .header(conn.useragent.clone())
                     .basic_auth(id.clone(), Some(secret.clone()))
@@ -83,7 +83,7 @@ impl Auth {
                     Err(ErrorKind::BadRequest.into())
                 }
             }
-			// App types other than script are unsupported right now
+            // App types other than script are unsupported right now
             _ => Err(ErrorKind::Unimplemented.into()),
         }
     }
