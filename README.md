@@ -49,4 +49,4 @@ let mut app = App::new("appnamehere", "v0.0.2", "/u/usernamehere/");
 reddit.conn.auth = Some(reddit.authorize(username, password, OauthApp::Script(app_id, app_secret)).unwrap());
 ```
 
-> Note: I am by no means an experienced programmer, and there are probably extremely obvious mistakes in this code. Thankfully the inherent safety of rust makes this likely a decently stable API, but no guarantees :). This project is probably usable for a simple bot written in rust, but it's still not even close to feature complete.
+> Generic Notice: This is an unstable project yadda yadda yadda use it if you dare thanks
