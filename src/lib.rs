@@ -167,6 +167,11 @@ impl App {
         Listing::from_value(&data).expect("failed to parse listing")
     }
 
+	/// Load more comments
+	pub fn more_children(&self, comment: &str) { //-> Listing<Comment> {
+
+	}
+
     /// Comment on a thing
     /// # Arguments
     /// * `text` - The body of the comment

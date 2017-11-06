@@ -14,14 +14,14 @@ A simple reddit API interface for Rust
 
 ### Features Todo (nonexhaustive):
 - Up next: error_chain integration for actual error handling instead of unwrap (partially implemented)
-- All data structures
+- All data structures, or maybe pure json. Consistency is the goal.
 - Oauth installed app type
 - Better documentation
 - More reddit api implementation
 
 
 ### Contributing
-If you have ever made a pull request on github before you probably know more about it than me. I would really appreciate any help on this project, so if you have an idea on how to improve it, please feel free to submit an issue or pull request.
+If you've ever made a pull request on github before, you probably know more about it than me. I would really appreciate any help on this project, so if you have an idea on how to improve it, please feel free to submit an issue or pull request.
 
 ### Example: Recursively traversing a comment tree
 ```rust

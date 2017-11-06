@@ -1,6 +1,7 @@
 use super::*;
 use std::time::Duration;
 use std::thread;
+use net::LimitMethod;
 
 fn init_reddit() -> App {
     use std::env;
@@ -103,12 +104,47 @@ fn comment_tree() {
                     println!("Comment by {}", data.author);
                     print_tree(data.replies, level + 1);
                 }
-                _ => {}
+                Comment::NotLoaded(ids) => {
+					for _ in 0..level {
+						print!("\t");
+					}
+					println!("Comment id: {}", ids);
+				}
             }
         }
     };
 
     print_tree(tree, 0);
+}
+
+#[test(Stress)]
+fn stress_test() {
+	let requests = 120;
+
+	let reddit = init_reddit();
+	reddit.conn.set_limit(LimitMethod::Steady);
+
+	use std::time::{Duration, Instant};
+
+	let mut times: Vec<Duration> = Vec::new();
+
+	let start = Instant::now();
+	for userstuff in 0..requests {
+		let t1 = Instant::now();
+		//reddit.get_user(&format!("{}{}", "PresidentObama", requests));
+		reddit.get_self();
+		times.push(Instant::now() - t1);
+	}
+	let total = Instant::now() - start;
+
+	println!("Total time for {} requests: {:?}", requests, total);
+	
+	let mut sum = Duration::new(0, 0);
+	for i in times.iter() {
+		sum += i.clone();
+	}
+
+	println!("Average wait time: {:?}", sum / requests);
 }
 
 //#[test(submit)]
