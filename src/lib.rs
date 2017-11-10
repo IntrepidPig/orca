@@ -167,10 +167,10 @@ impl App {
         Listing::from_value(&data).expect("failed to parse listing")
     }
 
-	/// Load more comments
-	pub fn more_children(&self, comment: &str) { //-> Listing<Comment> {
+    /// Load more comments
+    pub fn more_children(&self, comment: &str) { //-> Listing<Comment> {
 
-	}
+    }
 
     /// Comment on a thing
     /// # Arguments
@@ -190,5 +190,41 @@ impl App {
             .build();
 
         self.conn.run_auth_request(req).unwrap();
+    }
+
+    /// Sticky a post in a subreddit
+    /// # Arguments
+    /// * `sticky` - boolean value. True to set post as sticky, false to unset post as sticky
+    /// * `slot` - Optional slot number to fill (1 or 2)
+    /// * `id` - id of the post to sticky
+    pub fn set_sticky(&self, sticky: bool, slot: Option<i32>, id: &str) -> Result<()> {
+        let numstr;
+        let mut params: HashMap<&str, &str> = HashMap::new();
+        params.insert(
+            "state",
+            if sticky { "true" } else { "false" },
+        );
+
+        if let Some(num) = slot {
+            if num != 1 && num != 2 {
+                return Err(ErrorKind::Other("Slot must be 1 or 2".to_string()).into());
+            }
+            numstr = num.to_string();
+            params.insert("num", &numstr);
+        }
+
+        params.insert("id", id);
+
+        let req = self.conn
+            .client
+            .post(Url::parse("https://oauth.reddit.com/api/set_subreddit_sticky").unwrap())
+            .unwrap()
+            .form(&params)
+            .unwrap()
+            .build();
+
+        self.conn.run_auth_request(req)?;
+
+        Ok(())
     }
 }
