@@ -1,19 +1,22 @@
 use json::Value;
 use data::Thing;
+use errors::*;
 
 pub struct Post {
 	pub raw: Value,
 }
 
 impl Post {
-	pub fn from_json(data: Value) -> Post {
-		Post {
-			raw: data
-		}
-	}
+	
 }
 
 impl Thing for Post {
+	fn from_value(data: &Value) -> Result<Post> {
+		Ok(Post {
+			raw: data.clone()
+		})
+	}
+
 	fn get_json(&self) -> &Value {
 		&self.raw
 	}

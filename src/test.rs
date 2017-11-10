@@ -152,6 +152,8 @@ fn sticky() {
 	
     reddit.set_sticky(true, None, "6u65br").unwrap();
     println!("Set sticky, unsetting in 30 seconds");
+	thread::sleep(Duration::new(5, 0));
+	
     thread::sleep(Duration::new(30, 0));
     reddit.set_sticky(false, None, "6u65br").unwrap();
     println!("Unset sticky");

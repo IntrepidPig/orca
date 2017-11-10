@@ -11,7 +11,29 @@ pub enum Comment {
 }
 
 impl Comment {
-    pub fn from_value(val: &Value) -> Result<Comment> {
+    
+}
+
+#[derive(Clone)]
+pub struct CommentData {
+    pub edited: Option<f64>,
+    pub id: String,
+    pub author: String,
+    pub ups: i64,
+    pub downs: i64,
+    pub score: i64,
+    pub body: String,
+    pub is_submitter: bool,
+    pub stickied: bool,
+    pub subreddit: String,
+    pub score_hidden: bool,
+    pub name: String,
+    pub replies: Listing<Comment>,
+    pub raw: Value,
+}
+
+impl Thing for Comment {
+	fn from_value(val: &Value) -> Result<Comment> {
         // nice
         macro_rules! out {
 			($val:ident) => {
@@ -94,28 +116,15 @@ impl Comment {
             raw: raw,
         })))
     }
-}
 
-#[derive(Clone)]
-pub struct CommentData {
-    pub edited: Option<f64>,
-    pub id: String,
-    pub author: String,
-    pub ups: i64,
-    pub downs: i64,
-    pub score: i64,
-    pub body: String,
-    pub is_submitter: bool,
-    pub stickied: bool,
-    pub subreddit: String,
-    pub score_hidden: bool,
-    pub name: String,
-    pub replies: Listing<Comment>,
-    pub raw: Value,
-}
-
-impl Thing for CommentData {
 	fn get_json(&self) -> &Value {
-		&self.raw
+		match self {
+			&Comment::Loaded(ref data) => {
+				&data.raw
+			}
+			&Comment::NotLoaded(ref id) => {
+				panic!("Shit");
+			}
+		}
 	}
 }

@@ -4,7 +4,7 @@ use json;
 use json::Value;
 
 use errors::{Error, ErrorKind, Result, ResultExt};
-use data::{Comment, CommentData};
+use data::{Comment, CommentData, Thing};
 
 #[derive(Clone)]
 pub struct Listing<T> {
