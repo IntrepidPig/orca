@@ -1,9 +1,9 @@
 error_chain! {
     errors {
         /// An error meaning you sent a bad request to reddit
-        BadRequest {
+        BadRequest(message: String) {
             description("Reddit failed to handle the request")
-            display("Failed to handle request")
+            display("Failed to handle request. Got response {}", message)
         }
 
         /// You tried to perform an action that was unauthorized. Make sure to set the auth field
@@ -27,6 +27,11 @@ error_chain! {
         InvalidJson(jsonstr: String) {
             description("JSON recieved could not be parsed correctly")
             display("Invalid json: {}", jsonstr)
+        }
+
+        Other(msg: String) {
+            description("An error occurred")
+            display("{}", msg)
         }
     }
 }

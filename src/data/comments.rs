@@ -2,7 +2,7 @@ use json;
 use json::Value;
 
 use errors::{Error, ErrorKind, Result, ResultExt};
-use data::listing::Listing;
+use data::{Listing, Thing};
 
 #[derive(Clone)]
 pub enum Comment {
@@ -112,4 +112,10 @@ pub struct CommentData {
     pub name: String,
     pub replies: Listing<Comment>,
     pub raw: Value,
+}
+
+impl Thing for CommentData {
+	fn get_json(&self) -> &Value {
+		&self.raw
+	}
 }

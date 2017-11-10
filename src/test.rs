@@ -17,7 +17,7 @@ fn init_reddit() -> App {
     let id = get_env("REDDIT_APP_ID");
     let secret = get_env("REDDIT_APP_SECRET");
 
-    let mut reddit = App::new("OrcaLibTest", "v0.0.2", "/u/IntrepidPig/").unwrap();
+    let mut reddit = App::new("OrcaLibTestYes", "v0.0.3", "/u/IntrepidPig2").unwrap();
 
     reddit.conn.auth = Some(
         reddit
@@ -105,11 +105,11 @@ fn comment_tree() {
                     print_tree(data.replies, level + 1);
                 }
                 Comment::NotLoaded(ids) => {
-					for _ in 0..level {
-						print!("\t");
-					}
-					println!("Comment id: {}", ids);
-				}
+                    for _ in 0..level {
+                        print!("\t");
+                    }
+                    println!("Comment id: {}", ids);
+                }
             }
         }
     };
@@ -119,32 +119,42 @@ fn comment_tree() {
 
 #[test(Stress)]
 fn stress_test() {
-	let requests = 120;
+    let requests = 120;
 
-	let reddit = init_reddit();
-	reddit.conn.set_limit(LimitMethod::Steady);
+    let reddit = init_reddit();
+    reddit.conn.set_limit(LimitMethod::Steady);
 
-	use std::time::{Duration, Instant};
+    use std::time::{Duration, Instant};
 
-	let mut times: Vec<Duration> = Vec::new();
+    let mut times: Vec<Duration> = Vec::new();
 
-	let start = Instant::now();
-	for userstuff in 0..requests {
-		let t1 = Instant::now();
-		//reddit.get_user(&format!("{}{}", "PresidentObama", requests));
-		reddit.get_self();
-		times.push(Instant::now() - t1);
-	}
-	let total = Instant::now() - start;
+    let start = Instant::now();
+    for userstuff in 0..requests {
+        let t1 = Instant::now();
+        reddit.get_self();
+        times.push(Instant::now() - t1);
+    }
+    let total = Instant::now() - start;
 
-	println!("Total time for {} requests: {:?}", requests, total);
+    println!("Total time for {} requests: {:?}", requests, total);
+
+    let mut sum = Duration::new(0, 0);
+    for i in times.iter() {
+        sum += i.clone();
+    }
+
+    println!("Average wait time: {:?}", sum / requests);
+}
+
+#[test(Sticky)]
+fn sticky() {
+    let reddit = init_reddit();
 	
-	let mut sum = Duration::new(0, 0);
-	for i in times.iter() {
-		sum += i.clone();
-	}
-
-	println!("Average wait time: {:?}", sum / requests);
+    reddit.set_sticky(true, None, "6u65br").unwrap();
+    println!("Set sticky, unsetting in 30 seconds");
+    thread::sleep(Duration::new(30, 0));
+    reddit.set_sticky(false, None, "6u65br").unwrap();
+    println!("Unset sticky");
 }
 
 //#[test(submit)]

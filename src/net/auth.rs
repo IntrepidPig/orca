@@ -80,7 +80,7 @@ impl Auth {
                         Err(ErrorKind::ResponseError(responsejson.to_string()).into())
                     }
                 } else {
-                    Err(ErrorKind::BadRequest.into())
+                    Err(ErrorKind::BadRequest("idk".to_string()).into())
                 }
             }
             // App types other than script are unsupported right now
