@@ -1,3 +1,3 @@
 pub enum RedditError {
-	Other(String)
+    Other(String),
 }

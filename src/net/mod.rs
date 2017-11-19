@@ -90,9 +90,9 @@ impl Connection {
         };
 
         // Execute the request!
-        let mut response = self.client
-            .execute(req)
-            .chain_err(|| "Failed to send request")?;
+        let mut response = self.client.execute(req).chain_err(
+            || "Failed to send request",
+        )?;
         let mut out = String::new();
         response.read_to_string(&mut out).chain_err(|| "Nice")?;
 
@@ -116,13 +116,15 @@ impl Connection {
                 .parse::<f32>()
                 .unwrap()
                 .round() as u64;
-            self.reset_time
-                .set(Instant::now() + Duration::new(secs_remaining, 0));
+            self.reset_time.set(
+                Instant::now() +
+                    Duration::new(secs_remaining, 0),
+            );
         }
 
-		if !response.status().is_success() {
-			return Err(ErrorKind::BadRequest(out).into());
-		}
+        if !response.status().is_success() {
+            return Err(ErrorKind::BadRequest(out).into());
+        }
 
         Ok(json::from_str(&out).chain_err(|| "Couldn't parse json")?)
     }
@@ -131,9 +133,9 @@ impl Connection {
     pub fn run_auth_request(&self, mut req: Request) -> Result<Value> {
         // Check if this connection is authorized
         if let Some(ref auth) = self.auth.clone() {
-            req.headers_mut().set(Authorization(Bearer {
-                token: auth.token.clone(),
-            }));
+            req.headers_mut().set(Authorization(
+                Bearer { token: auth.token.clone() },
+            ));
 
             self.run_request(req)
         } else {

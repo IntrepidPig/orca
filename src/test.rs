@@ -2,6 +2,7 @@ use super::*;
 use std::time::Duration;
 use std::thread;
 use net::LimitMethod;
+use data::Post;
 
 fn init_reddit() -> App {
     use std::env;
@@ -19,11 +20,7 @@ fn init_reddit() -> App {
 
     let mut reddit = App::new("OrcaLibTestYes", "v0.0.3", "/u/IntrepidPig2").unwrap();
 
-    reddit.conn.auth = Some(
-        reddit
-            .authorize(username, password, net::auth::OauthApp::Script(id, secret))
-            .unwrap(),
-    );
+    reddit.authorize(username, password, net::auth::OauthApp::Script(id, secret));
 
     reddit
 }
@@ -83,7 +80,7 @@ fn comment_stream() {
             _ => panic!("This was not supposed to happen"),
         }
 
-        if count > 30 {
+        if count > 2000 {
             break;
         };
     }
@@ -149,14 +146,22 @@ fn stress_test() {
 #[test(Sticky)]
 fn sticky() {
     let reddit = init_reddit();
-	
+
     reddit.set_sticky(true, None, "6u65br").unwrap();
     println!("Set sticky, unsetting in 30 seconds");
-	thread::sleep(Duration::new(5, 0));
-	
+    thread::sleep(Duration::new(5, 0));
+
     thread::sleep(Duration::new(30, 0));
     reddit.set_sticky(false, None, "6u65br").unwrap();
     println!("Unset sticky");
+}
+
+#[test(load_thing)]
+fn load_thing() {
+    let reddit = init_reddit();
+
+    let post: Post = reddit.load_thing("t3_7am0zo").unwrap();
+    println!("Got post: {:?}", post);
 }
 
 //#[test(submit)]

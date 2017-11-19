@@ -3,6 +3,9 @@
 extern crate chrono;
 #[macro_use]
 extern crate error_chain;
+#[macro_use]
+extern crate failure_derive;
+extern crate failure;
 extern crate reqwest as http;
 extern crate serde;
 #[macro_use]
@@ -30,9 +33,11 @@ pub mod data;
 pub mod errors;
 use errors::{Error, ErrorKind, Result, ResultExt};
 
+use failure::{Fail, Error, err_msg};
+
 use net::Connection;
 use net::auth::{Auth, AuthError, OauthApp};
-use data::{Comment, CommentData, Comments, Listing, Sort, SortTime};
+use data::{Comment, CommentData, Comments, Listing, Sort, SortTime, Thing};
 
 /// A reddit object
 /// ## Usage:
@@ -67,8 +72,12 @@ impl App {
     /// # Returns
     /// A result containing either an Auth object or a certain error
     /// To use place it in the auth field of a connection struct
-    pub fn authorize(&self, username: String, password: String, oauth: net::auth::OauthApp) -> Result<Auth> {
-        Auth::new(&self.conn, oauth, username, password)
+    pub fn authorize(&mut self, username: String, password: String, oauth: net::auth::OauthApp) -> Result<()> {
+        self.conn.auth = match Auth::new(&self.conn, oauth, username, password) {
+            Ok(auth) => Some(auth),
+            Err(e) => return Err(e.into()),
+        };
+        Ok(())
     }
 
     /// Get the posts in a subreddit sorted in a specific way
@@ -87,7 +96,7 @@ impl App {
                     sub
                 ),
                 sort.param(),
-            ).unwrap(),
+            )?,
         );
 
         self.conn.run_request(req)
@@ -110,7 +119,9 @@ impl App {
 
         let req = self.conn
             .client
-            .post(Url::parse("https://oauth.reddit.com/api/submit/.json").unwrap())
+            .post(
+                Url::parse("https://oauth.reddit.com/api/submit/.json").unwrap(),
+            )
             .unwrap()
             .form(&params)
             .unwrap()
@@ -153,22 +164,25 @@ impl App {
     /// either Loaded or NotLoaded
     /// # Arguments
     /// * `post` - The name of the post to retrieve the tree from
-    pub fn get_comment_tree(&self, post: String) -> Listing<Comment> {
+    pub fn get_comment_tree(&self, post: String) -> Result<Listing<Comment>> {
         // TODO add sorting and shit
         let req = self.conn
             .client
-            .get(Url::parse(&format!("https://www.reddit.com/comments/{}/.json", post)).unwrap())
+            .get(
+                Url::parse(&format!("https://www.reddit.com/comments/{}/.json", post)).unwrap(),
+            )
             .unwrap()
             .build();
 
-        let data = self.conn.run_request(req).unwrap();
+        let data = self.conn.run_request(req)?;
         let data = data[1].clone();
 
-        Listing::from_value(&data).expect("failed to parse listing")
+        Listing::from_value(&data)
     }
 
     /// Load more comments
-    pub fn more_children(&self, comment: &str) { //-> Listing<Comment> {
+    pub fn more_children(&self, comment: &[&str]) {
+        //-> Listing<Comment> {
 
     }
 
@@ -200,10 +214,7 @@ impl App {
     pub fn set_sticky(&self, sticky: bool, slot: Option<i32>, id: &str) -> Result<()> {
         let numstr;
         let mut params: HashMap<&str, &str> = HashMap::new();
-        params.insert(
-            "state",
-            if sticky { "true" } else { "false" },
-        );
+        params.insert("state", if sticky { "true" } else { "false" });
 
         if let Some(num) = slot {
             if num != 1 && num != 2 {
@@ -217,7 +228,9 @@ impl App {
 
         let req = self.conn
             .client
-            .post(Url::parse("https://oauth.reddit.com/api/set_subreddit_sticky").unwrap())
+            .post(
+                Url::parse("https://oauth.reddit.com/api/set_subreddit_sticky").unwrap(),
+            )
             .unwrap()
             .form(&params)
             .unwrap()
@@ -226,5 +239,25 @@ impl App {
         self.conn.run_auth_request(req)?;
 
         Ok(())
+    }
+
+    /// Load a thing
+    pub fn load_thing<T>(&self, fullname: &str) -> Result<T>
+    where
+        T: Thing,
+    {
+        let mut params: HashMap<&str, &str> = HashMap::new();
+        params.insert("names", fullname);
+
+        let req = self.conn
+            .client
+            .get(
+                Url::parse(&format!("https://www.reddit.com/by_id/{}", fullname)).unwrap(),
+            )
+            .unwrap()
+            .build();
+        let response = self.conn.run_request(req)?;
+
+        T::from_value(&response)
     }
 }

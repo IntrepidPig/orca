@@ -4,17 +4,15 @@ use json::Value;
 use errors::{Error, ErrorKind, Result, ResultExt};
 use data::{Listing, Thing};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Comment {
     Loaded(Box<CommentData>),
     NotLoaded(String),
 }
 
-impl Comment {
-    
-}
+impl Comment {}
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct CommentData {
     pub edited: Option<f64>,
     pub id: String,
@@ -33,7 +31,7 @@ pub struct CommentData {
 }
 
 impl Thing for Comment {
-	fn from_value(val: &Value) -> Result<Comment> {
+    fn from_value(val: &Value) -> Result<Comment> {
         // nice
         macro_rules! out {
 			($val:ident) => {
@@ -117,14 +115,12 @@ impl Thing for Comment {
         })))
     }
 
-	fn get_json(&self) -> &Value {
-		match self {
-			&Comment::Loaded(ref data) => {
-				&data.raw
-			}
-			&Comment::NotLoaded(ref id) => {
-				panic!("Shit");
-			}
-		}
-	}
+    fn get_json(&self) -> &Value {
+        match self {
+            &Comment::Loaded(ref data) => &data.raw,
+            &Comment::NotLoaded(ref id) => {
+                panic!("Shit");
+            }
+        }
+    }
 }
