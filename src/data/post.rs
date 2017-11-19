@@ -4,17 +4,17 @@ use errors::*;
 
 #[derive(Debug)]
 pub struct Post {
-    pub raw: Value,
+	pub raw: Value,
 }
 
 impl Post {}
 
 impl Thing for Post {
-    fn from_value(data: &Value) -> Result<Post, RedditError> {
-        Ok(Post { raw: data.clone() })
-    }
+	fn from_value(data: &Value) -> Result<Post, RedditError> {
+		Ok(Post { raw: data.clone() })
+	}
 
-    fn get_json(&self) -> &Value {
-        &self.raw
-    }
+	fn get_json(&self) -> &Value {
+		&self.raw
+	}
 }

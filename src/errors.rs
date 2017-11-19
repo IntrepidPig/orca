@@ -11,7 +11,7 @@ pub struct Forbidden {}
 #[derive(Debug, Fail)]
 #[fail(display = "Got an unexpected reponse:\n{}", response)]
 pub struct BadResponse {
-    pub response: String,
+	pub response: String,
 }
 
 #[derive(Debug, Fail)]
@@ -25,7 +25,7 @@ pub enum RedditError {
 	#[fail(display = "Requested resource is forbidden")]
 	Forbidden,
 	#[fail(display = "Got an unexpected response:\n{}", response)]
-	BadResponse {response: String},
+	BadResponse { response: String },
 	#[fail(display = "Failed to execute the request")]
-	BadRequest
+	BadRequest,
 }
