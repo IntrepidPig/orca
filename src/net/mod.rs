@@ -13,8 +13,10 @@ use json::Value;
 use http::{Client, Method, Request, Url};
 use http::header::{Authorization, Bearer, UserAgent};
 
-use errors::{Error, ErrorKind, Result, ResultExt};
+use errors::{BadRequest, RedditError, Forbidden};
 use self::auth::{Auth, OauthApp};
+
+use failure::{Fail, Error, err_msg};
 
 #[derive(Copy, Clone)]
 pub enum LimitMethod {
@@ -41,7 +43,7 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn new(appname: String, appversion: String, appauthor: String) -> Result<Connection> {
+    pub fn new(appname: String, appversion: String, appauthor: String) -> Result<Connection, Error> {
         let useragent = UserAgent::new(format!(
             "orca:{}:{} (by {})",
             appname,
@@ -51,7 +53,7 @@ impl Connection {
         Ok(Connection {
             auth: None,
             useragent: useragent,
-            client: Client::new().unwrap(),
+            client: Client::new()?,
             limit: Cell::new(LimitMethod::Steady),
             reqs: Cell::new(0),
             remaining: Cell::new(None),
@@ -60,7 +62,7 @@ impl Connection {
     }
 
     /// Send a request to reddit
-    pub fn run_request(&self, req: Request) -> Result<Value> {
+    pub fn run_request(&self, req: Request) -> Result<Value, RedditError> {
         // Ratelimit based on method chosen type
         match self.limit.get() {
             LimitMethod::Steady => {
@@ -69,11 +71,9 @@ impl Connection {
                     // If the reset time is in the future
                     if Instant::now() < self.reset_time.get() {
                         // Sleep for the amount of time until reset divided by how many requests we have for steady sending
-                        thread::sleep(
-                            (self.reset_time.get() - Instant::now())
-                                .checked_div(remaining as u32)
-                                .unwrap(),
-                        );
+                        thread::sleep((self.reset_time.get() - Instant::now())
+                            .checked_div(remaining as u32)
+                            .unwrap());
                     }
                     // Else we must have already passed reset time and we will get a new one after this request
                 }
@@ -90,11 +90,12 @@ impl Connection {
         };
 
         // Execute the request!
-        let mut response = self.client.execute(req).chain_err(
-            || "Failed to send request",
-        )?;
+        let mut response = match self.client.execute(req) {
+            Ok(resp) => resp,
+            Err(e) => return Err(RedditError::BadRequest),
+        };
         let mut out = String::new();
-        response.read_to_string(&mut out).chain_err(|| "Nice")?;
+        response.read_to_string(&mut out).unwrap();
 
         // Update values from response ratelimiting headers
         if let Some(reqs_used) = response.headers().get_raw("x-ratelimit-used") {
@@ -123,14 +124,17 @@ impl Connection {
         }
 
         if !response.status().is_success() {
-            return Err(ErrorKind::BadRequest(out).into());
+            return Err(RedditError::BadRequest);
         }
 
-        Ok(json::from_str(&out).chain_err(|| "Couldn't parse json")?)
+        match json::from_str(&out) {
+            Ok(r) => Ok(r),
+            Err(_) => return Err(RedditError::BadResponse { response: out }),
+        }
     }
 
     /// Send a request to reddit with authorization headers
-    pub fn run_auth_request(&self, mut req: Request) -> Result<Value> {
+    pub fn run_auth_request(&self, mut req: Request) -> Result<Value, RedditError> {
         // Check if this connection is authorized
         if let Some(ref auth) = self.auth.clone() {
             req.headers_mut().set(Authorization(
@@ -139,7 +143,7 @@ impl Connection {
 
             self.run_request(req)
         } else {
-            Err(ErrorKind::Unauthorized.into())
+            Err(RedditError::Forbidden)
         }
     }
 

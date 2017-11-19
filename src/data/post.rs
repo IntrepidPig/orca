@@ -10,7 +10,7 @@ pub struct Post {
 impl Post {}
 
 impl Thing for Post {
-    fn from_value(data: &Value) -> Result<Post> {
+    fn from_value(data: &Value) -> Result<Post, RedditError> {
         Ok(Post { raw: data.clone() })
     }
 

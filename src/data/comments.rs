@@ -1,7 +1,7 @@
 use json;
 use json::Value;
 
-use errors::{Error, ErrorKind, Result, ResultExt};
+use errors::*;
 use data::{Listing, Thing};
 
 #[derive(Debug, Clone)]
@@ -31,11 +31,11 @@ pub struct CommentData {
 }
 
 impl Thing for Comment {
-    fn from_value(val: &Value) -> Result<Comment> {
+    fn from_value(val: &Value) -> Result<Comment, RedditError> { //TODO replace panics with Err
         // nice
         macro_rules! out {
 			($val:ident) => {
-				return Err(ErrorKind::InvalidJson(json::to_string($val).unwrap()).into())
+			    return Err(RedditError::BadResponse { response: json::to_string($val).unwrap() } )
 			};
 		}
 

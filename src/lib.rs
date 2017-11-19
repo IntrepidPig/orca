@@ -2,8 +2,6 @@
 
 extern crate chrono;
 #[macro_use]
-extern crate error_chain;
-#[macro_use]
 extern crate failure_derive;
 extern crate failure;
 extern crate reqwest as http;
@@ -31,9 +29,9 @@ pub mod data;
 
 /// Errors
 pub mod errors;
-use errors::{Error, ErrorKind, Result, ResultExt};
+use errors::{Forbidden, BadRequest, RedditError, BadResponse, NotFound};
 
-use failure::{Fail, Error as FError, err_msg};
+use failure::{Fail, Error, err_msg};
 
 use net::Connection;
 use net::auth::{Auth, OauthApp};
@@ -54,13 +52,13 @@ impl App {
     /// * `appauthor` - Auther of the app
     /// # Returns
     /// A new reddit object
-    pub fn new(appname: &str, appversion: &str, appauthor: &str) -> Result<App> {
+    pub fn new(appname: &str, appversion: &str, appauthor: &str) -> Result<App, Error> {
         Ok(App {
             conn: Connection::new(
                 appname.to_string(),
                 appversion.to_string(),
                 appauthor.to_string(),
-            ).chain_err(|| "Failed to initialize reddit connection")?,
+            )?,
         })
     }
 
@@ -72,10 +70,10 @@ impl App {
     /// # Returns
     /// A result containing either an Auth object or a certain error
     /// To use place it in the auth field of a connection struct
-    pub fn authorize(&mut self, username: String, password: String, oauth: net::auth::OauthApp) -> Result<()> {
+    pub fn authorize(&mut self, username: String, password: String, oauth: net::auth::OauthApp) -> Result<(), RedditError> {
         self.conn.auth = match Auth::new(&self.conn, oauth, username, password) {
             Ok(auth) => Some(auth),
-            Err(e) => return Err(ErrorKind::Unauthorized.into()),
+            Err(e) => return Err(RedditError::Forbidden),
         };
         Ok(())
     }
@@ -86,17 +84,21 @@ impl App {
     /// * `sort` - Sort method of query
     /// # Returns
     /// A result containing a json listing of posts
-    pub fn get_posts(&self, sub: String, sort: Sort) -> Result<Value> {
+    pub fn get_posts(&self, sub: String, sort: Sort) -> Result<Value, RedditError> {
         let req = Request::new(
             Method::Get,
-            Url::parse_with_params(
+            if let Ok(url) = Url::parse_with_params(
                 &format!(
                     "https://www.reddit.com/r/{}/.\
                      json",
                     sub
                 ),
                 sort.param(),
-            ).chain_err(|| "Got badly formatted subreddit name")?,
+            ) {
+				url
+			} else {
+				return Err(RedditError::BadRequest)
+			},
         );
 
         self.conn.run_request(req)
@@ -109,7 +111,7 @@ impl App {
     /// * `text` - Body of the post
     /// # Returns
     /// A result with reddit's json response to the submission
-    pub fn submit_self(&self, sub: String, title: String, text: String, sendreplies: bool) -> Result<Value> {
+    pub fn submit_self(&self, sub: String, title: String, text: String, sendreplies: bool) -> Result<Value, RedditError> {
         let mut params: HashMap<&str, &str> = HashMap::new();
         params.insert("sr", &sub);
         params.insert("kind", "self");
@@ -135,7 +137,7 @@ impl App {
     /// Note: requires connection to be authorized
     /// # Returns
     /// A result with the json value of the user data
-    pub fn get_self(&self) -> Result<Value> {
+    pub fn get_self(&self) -> Result<Value, RedditError> {
         let req = Request::new(
             Method::Get,
             Url::parse("https://oauth.reddit.com/api/v1/me/.json").unwrap(),
@@ -144,7 +146,7 @@ impl App {
         self.conn.run_auth_request(req)
     }
 
-    pub fn get_user(&self, name: &str) -> Result<Value> {
+    pub fn get_user(&self, name: &str) -> Result<Value, RedditError> {
         let req = Request::new(
             Method::Get,
             Url::parse(&format!("https://www.reddit.com/user/{}/about/.json", name)).unwrap(),
@@ -164,7 +166,7 @@ impl App {
     /// either Loaded or NotLoaded
     /// # Arguments
     /// * `post` - The name of the post to retrieve the tree from
-    pub fn get_comment_tree(&self, post: String) -> Result<Listing<Comment>> {
+    pub fn get_comment_tree(&self, post: String) -> Result<Listing<Comment>, RedditError> {
         // TODO add sorting and shit
         let req = self.conn
             .client
@@ -211,14 +213,14 @@ impl App {
     /// * `sticky` - boolean value. True to set post as sticky, false to unset post as sticky
     /// * `slot` - Optional slot number to fill (1 or 2)
     /// * `id` - id of the post to sticky
-    pub fn set_sticky(&self, sticky: bool, slot: Option<i32>, id: &str) -> Result<()> {
+    pub fn set_sticky(&self, sticky: bool, slot: Option<i32>, id: &str) -> Result<(), RedditError> {
         let numstr;
         let mut params: HashMap<&str, &str> = HashMap::new();
         params.insert("state", if sticky { "true" } else { "false" });
 
         if let Some(num) = slot {
             if num != 1 && num != 2 {
-                return Err(ErrorKind::Other("Slot must be 1 or 2".to_string()).into());
+                return Err(RedditError::BadRequest);
             }
             numstr = num.to_string();
             params.insert("num", &numstr);
@@ -242,7 +244,7 @@ impl App {
     }
 
     /// Load a thing
-    pub fn load_thing<T>(&self, fullname: &str) -> Result<T>
+    pub fn load_thing<T>(&self, fullname: &str) -> Result<T, RedditError>
     where
         T: Thing,
     {

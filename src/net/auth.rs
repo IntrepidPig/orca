@@ -6,11 +6,12 @@ use http::header::UserAgent;
 use json;
 use json::Value;
 
-use errors::{Error, ErrorKind, BadResponse};
 use net::Connection;
 
+use errors::*;
+
 use net::error::AuthError;
-use failure::{Fail, Error as FError, err_msg};
+use failure::{Fail, Error, err_msg};
 
 /// Contains data for each possible oauth type
 /// Currently only Script is supported
@@ -63,12 +64,12 @@ impl Auth {
 					.build();
 
                 // Send the request and get the bearer token as a response
-                let mut response = match conn.run_request(tokenreq) { // TODO no clone
+                let mut response = match conn.run_request(tokenreq) {
                     Ok(response) => response,
                     Err(_) => return Err(AuthError {}),
                 };
 
-               if let Some(token) = response.get("access_token") {
+                if let Some(token) = response.get("access_token") {
                     let token = token.as_str().unwrap().to_string();
                     Ok(token)
                 } else {
