@@ -116,9 +116,9 @@ impl Thing for Comment {
     }
 
     fn get_json(&self) -> &Value {
-        match self {
-            &Comment::Loaded(ref data) => &data.raw,
-            &Comment::NotLoaded(ref _id) => {
+        match *self {
+            Comment::Loaded(ref data) => &data.raw,
+            Comment::NotLoaded(ref _id) => {
                 panic!("Shit!");
             }
         }

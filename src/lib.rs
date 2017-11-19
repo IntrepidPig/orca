@@ -55,9 +55,9 @@ impl App {
     pub fn new(appname: &str, appversion: &str, appauthor: &str) -> Result<App, Error> {
         Ok(App {
             conn: Connection::new(
-                appname.to_string(),
-                appversion.to_string(),
-                appauthor.to_string(),
+                appname,
+                appversion,
+                appauthor,
             )?,
         })
     }
@@ -84,7 +84,7 @@ impl App {
     /// * `sort` - Sort method of query
     /// # Returns
     /// A result containing a json listing of posts
-    pub fn get_posts(&self, sub: String, sort: Sort) -> Result<Value, RedditError> {
+    pub fn get_posts(&self, sub: &str, sort: Sort) -> Result<Value, RedditError> {
         let req = Request::new(
             Method::Get,
             if let Ok(url) = Url::parse_with_params(
@@ -111,12 +111,12 @@ impl App {
     /// * `text` - Body of the post
     /// # Returns
     /// A result with reddit's json response to the submission
-    pub fn submit_self(&self, sub: String, title: String, text: String, sendreplies: bool) -> Result<Value, RedditError> {
+    pub fn submit_self(&self, sub: &str, title: &str, text: &str, sendreplies: bool) -> Result<Value, RedditError> {
         let mut params: HashMap<&str, &str> = HashMap::new();
-        params.insert("sr", &sub);
+        params.insert("sr", sub);
         params.insert("kind", "self");
-        params.insert("title", &title);
-        params.insert("text", &text);
+        params.insert("title", title);
+        params.insert("text", text);
         params.insert("sendreplies", if sendreplies { "true" } else { "false" });
 
         let req = self.conn
@@ -166,7 +166,7 @@ impl App {
     /// either Loaded or NotLoaded
     /// # Arguments
     /// * `post` - The name of the post to retrieve the tree from
-    pub fn get_comment_tree(&self, post: String) -> Result<Listing<Comment>, RedditError> {
+    pub fn get_comment_tree(&self, post: &str) -> Result<Listing<Comment>, RedditError> {
         // TODO add sorting and shit
         let req = self.conn
             .client
@@ -183,7 +183,7 @@ impl App {
     }
 
     /// Load more comments
-    pub fn more_children(&self, comment: &[&str]) {
+    pub fn more_children(&self, _comment: &[&str]) {
         //-> Listing<Comment> {
 
     }
@@ -192,10 +192,10 @@ impl App {
     /// # Arguments
     /// * `text` - The body of the comment
     /// * `thing` - Fullname of the thing to comment on
-    pub fn comment(&self, text: String, thing: String) {
+    pub fn comment(&self, text: &str, thing: &str) {
         let mut params: HashMap<&str, &str> = HashMap::new();
-        params.insert("text", &text);
-        params.insert("thing_id", &thing);
+        params.insert("text", text);
+        params.insert("thing_id", thing);
 
         let req = self.conn
             .client

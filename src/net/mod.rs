@@ -43,7 +43,7 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn new(appname: String, appversion: String, appauthor: String) -> Result<Connection, Error> {
+    pub fn new(appname: &str, appversion: &str, appauthor: &str) -> Result<Connection, Error> {
         let useragent = UserAgent::new(format!(
             "orca:{}:{} (by {})",
             appname,
@@ -129,7 +129,7 @@ impl Connection {
 
         match json::from_str(&out) {
             Ok(r) => Ok(r),
-            Err(_) => return Err(RedditError::BadResponse { response: out }),
+            Err(_) => Err(RedditError::BadResponse { response: out }),
         }
     }
 
