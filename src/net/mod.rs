@@ -92,7 +92,7 @@ impl Connection {
         // Execute the request!
         let mut response = match self.client.execute(req) {
             Ok(resp) => resp,
-            Err(e) => return Err(RedditError::BadRequest),
+            Err(_) => return Err(RedditError::BadRequest),
         };
         let mut out = String::new();
         response.read_to_string(&mut out).unwrap();

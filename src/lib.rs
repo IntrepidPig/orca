@@ -73,7 +73,7 @@ impl App {
     pub fn authorize(&mut self, username: String, password: String, oauth: net::auth::OauthApp) -> Result<(), RedditError> {
         self.conn.auth = match Auth::new(&self.conn, oauth, username, password) {
             Ok(auth) => Some(auth),
-            Err(e) => return Err(RedditError::Forbidden),
+            Err(_) => return Err(RedditError::Forbidden),
         };
         Ok(())
     }

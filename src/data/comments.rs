@@ -98,28 +98,28 @@ impl Thing for Comment {
         };
 
         Ok(Comment::Loaded(Box::new(CommentData {
-            edited: edited,
-            id: id,
-            author: author,
-            ups: ups,
-            downs: downs,
-            score: score,
-            body: body,
-            is_submitter: is_submitter,
-            stickied: stickied,
-            subreddit: subreddit,
-            score_hidden: score_hidden,
-            name: name,
-            replies: replies,
-            raw: raw,
+            edited,
+            id,
+            author,
+            ups,
+            downs,
+            score,
+            body,
+            is_submitter,
+            stickied,
+            subreddit,
+            score_hidden,
+            name,
+            replies,
+            raw,
         })))
     }
 
     fn get_json(&self) -> &Value {
         match self {
             &Comment::Loaded(ref data) => &data.raw,
-            &Comment::NotLoaded(ref id) => {
-                panic!("Shit");
+            &Comment::NotLoaded(ref _id) => {
+                panic!("Shit!");
             }
         }
     }
