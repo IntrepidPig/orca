@@ -35,3 +35,19 @@ error_chain! {
         }
     }
 }
+
+use failure::{Fail, Error as FError, err_msg};
+
+#[derive(Debug, Fail)]
+#[fail(display = "The requested resource could not be found")]
+pub struct NotFound {}
+
+#[derive(Debug, Fail)]
+#[fail(display = "The requested resource is forbidden")]
+pub struct Forbidden {}
+
+#[derive(Debug, Fail)]
+#[fail(display = "Got an unexpected reponse:\n{}", response)]
+pub struct BadResponse {
+    pub response: String,
+}

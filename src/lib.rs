@@ -33,10 +33,10 @@ pub mod data;
 pub mod errors;
 use errors::{Error, ErrorKind, Result, ResultExt};
 
-use failure::{Fail, Error, err_msg};
+use failure::{Fail, Error as FError, err_msg};
 
 use net::Connection;
-use net::auth::{Auth, AuthError, OauthApp};
+use net::auth::{Auth, OauthApp};
 use data::{Comment, CommentData, Comments, Listing, Sort, SortTime, Thing};
 
 /// A reddit object
@@ -75,7 +75,7 @@ impl App {
     pub fn authorize(&mut self, username: String, password: String, oauth: net::auth::OauthApp) -> Result<()> {
         self.conn.auth = match Auth::new(&self.conn, oauth, username, password) {
             Ok(auth) => Some(auth),
-            Err(e) => return Err(e.into()),
+            Err(e) => return Err(ErrorKind::Unauthorized.into()),
         };
         Ok(())
     }
@@ -96,7 +96,7 @@ impl App {
                     sub
                 ),
                 sort.param(),
-            )?,
+            ).chain_err(|| "Got badly formatted subreddit name")?,
         );
 
         self.conn.run_request(req)

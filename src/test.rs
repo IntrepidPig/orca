@@ -89,7 +89,7 @@ fn comment_stream() {
 #[test(tree)]
 fn comment_tree() {
     let reddit = init_reddit();
-    let tree = reddit.get_comment_tree("2np694".to_string());
+    let tree = reddit.get_comment_tree("2np694".to_string()).unwrap();
 
     fn print_tree(listing: Listing<Comment>, level: i32) {
         for comment in listing {
