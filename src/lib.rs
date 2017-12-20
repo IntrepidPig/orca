@@ -282,7 +282,3 @@ impl App {
 		}
 	}
 }
-
-mod Urls {
-	use http::Url;
-}
