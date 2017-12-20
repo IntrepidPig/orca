@@ -147,12 +147,12 @@ fn stress_test() {
 fn sticky() {
 	let reddit = init_reddit();
 
-	reddit.set_sticky(true, None, "6u65br").unwrap();
+	reddit.set_sticky(true, Some(2), "t3_6u65br").unwrap();
 	println!("Set sticky, unsetting in 30 seconds");
 	thread::sleep(Duration::new(5, 0));
 
 	thread::sleep(Duration::new(30, 0));
-	reddit.set_sticky(false, None, "6u65br").unwrap();
+	reddit.set_sticky(false, Some(2), "t3_6u65br").unwrap();
 	println!("Unset sticky");
 }
 
@@ -162,6 +162,15 @@ fn load_thing() {
 
 	let post: Post = reddit.load_thing("t3_7am0zo").unwrap();
 	println!("Got post: {:?}", post);
+}
+
+#[test(message)]
+fn message() {
+	let reddit = init_reddit();
+
+	reddit
+		.message("intrepidpig", "please don't spam me", "oops")
+		.unwrap_or_else(|e| println!("{}", e));
 }
 
 //#[test(submit)]

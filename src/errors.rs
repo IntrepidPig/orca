@@ -1,5 +1,7 @@
 use failure::{Fail, Error, err_msg};
 
+use json::{Value, Error as JsonError};
+
 #[derive(Debug, Fail)]
 #[fail(display = "The requested resource could not be found")]
 pub struct NotFound {}
@@ -28,4 +30,10 @@ pub enum RedditError {
 	BadResponse { response: String },
 	#[fail(display = "Failed to execute the request")]
 	BadRequest,
+}
+
+#[derive(Debug, Fail)]
+#[fail(display = "Could not parse thing")]
+pub struct ParseError {
+	pub raw_json: String,
 }

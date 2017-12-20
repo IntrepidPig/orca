@@ -209,11 +209,11 @@ impl App {
 	/// # Arguments
 	/// * `sticky` - boolean value. True to set post as sticky, false to unset post as sticky
 	/// * `slot` - Optional slot number to fill (1 or 2)
-	/// * `id` - id of the post to sticky
+	/// * `id` - _fullname_ of the post to sticky
 	pub fn set_sticky(&self, sticky: bool, slot: Option<i32>, id: &str) -> Result<(), RedditError> {
 		let numstr;
 		let mut params: HashMap<&str, &str> = HashMap::new();
-		params.insert("state", if sticky { "true" } else { "false" });
+		params.insert("state", if sticky { "1" } else { "0" });
 
 		if let Some(num) = slot {
 			if num != 1 && num != 2 {
@@ -251,7 +251,7 @@ impl App {
 		let req = self.conn
 			.client
 			.get(
-				Url::parse(&format!("https://www.reddit.com/by_id/{}", fullname)).unwrap(),
+				Url::parse(&format!("https://www.reddit.com/by_id/{}/.json", fullname)).unwrap(),
 			)
 			.unwrap()
 			.build();
@@ -259,4 +259,30 @@ impl App {
 
 		T::from_value(&response)
 	}
+
+	pub fn message(&self, to: &str, subject: &str, body: &str) -> Result<(), RedditError> {
+		let mut params: HashMap<&str, &str> = HashMap::new();
+		params.insert("to", to);
+		params.insert("subject", subject);
+		params.insert("text", body);
+
+		let req = self.conn
+			.client
+			.post(
+				Url::parse("https://oauth.reddit.com/api/compose/.json").unwrap(),
+			)
+			.unwrap()
+			.form(&params)
+			.unwrap()
+			.build();
+
+		match self.conn.run_auth_request(req) {
+			Ok(_) => Ok(()),
+			Err(e) => Err(e),
+		}
+	}
+}
+
+mod Urls {
+	use http::Url;
 }

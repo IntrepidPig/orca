@@ -6,9 +6,8 @@ use http::header::UserAgent;
 use json;
 use json::Value;
 
+use errors::BadResponse;
 use net::Connection;
-
-use errors::*;
 
 use net::error::AuthError;
 use failure::{Fail, Error, err_msg};

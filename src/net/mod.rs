@@ -52,7 +52,7 @@ impl Connection {
 		));
 		Ok(Connection {
 			auth: None,
-			useragent: useragent,
+			useragent,
 			client: Client::new()?,
 			limit: Cell::new(LimitMethod::Steady),
 			reqs: Cell::new(0),
@@ -126,6 +126,7 @@ impl Connection {
 		}
 
 		if !response.status().is_success() {
+			println!("Got status {}", response.status());
 			return Err(RedditError::BadRequest);
 		}
 
