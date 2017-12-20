@@ -23,7 +23,7 @@ pub enum OauthApp {
 	/// ^
 	InstalledApp,
 	/// Where args are (app id, app secret) is the script secret
-	Script(String, String),
+	Script { id: String, secret: String },
 }
 
 /// Contains authorization info for a user and client
@@ -45,7 +45,7 @@ impl Auth {
 		// TODO: get rid of unwraps and expects
 		use self::OauthApp::*;
 		match *app {
-			Script(ref id, ref secret) => {
+			Script { ref id, ref secret } => {
 				// authorization paramaters to request
 				let mut params: HashMap<&str, &str> = HashMap::new();
 				params.insert("grant_type", "password");
@@ -75,7 +75,7 @@ impl Auth {
 					Err(AuthError {})
 				}
 
-			}
+			},
 			// App types other than script are unsupported right now
 			_ => unimplemented!(),
 		}

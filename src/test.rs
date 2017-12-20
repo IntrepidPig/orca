@@ -20,7 +20,7 @@ fn init_reddit() -> App {
 
 	let mut reddit = App::new("OrcaLibTestYes", "v0.0.3", "/u/IntrepidPig2").unwrap();
 
-	reddit.authorize(username, password, net::auth::OauthApp::Script(id, secret));
+	reddit.authorize(username, password, net::auth::OauthApp::Script { id, secret });
 
 	reddit
 }
