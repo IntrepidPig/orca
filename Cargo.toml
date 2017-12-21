@@ -1,6 +1,6 @@
 [package]
 name = "orca"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["Benny A <virusdownloader7@gmail.com>"]
 description = "A Reddit API client for Rust"
 repository = "https://github.com/IntrepidPig/orca"
@@ -14,3 +14,7 @@ serde_json = "1.0"
 reqwest = "0.7"
 failure = "0.1"
 failure_derive = "0.1"
+open = "1.2"
+tiny_http = "0.5"
+url = "1.6"
+rand = "0.3"

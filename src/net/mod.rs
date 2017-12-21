@@ -11,10 +11,10 @@ use std::cell::Cell;
 use json;
 use json::Value;
 use http::{Client, Method, Request, Url};
-use http::header::{Authorization, Bearer, UserAgent};
+use http::header::{Authorization, Bearer, UserAgent, Basic};
 
 use errors::{BadRequest, RedditError, Forbidden};
-use self::auth::{Auth, OauthApp};
+use self::auth::{OAuth, OauthApp};
 
 use failure::{Fail, Error, err_msg};
 
@@ -27,7 +27,7 @@ pub enum LimitMethod {
 /// A connection holder to reddit. Holds authorization info if provided
 pub struct Connection {
 	/// Authorization info (optional, but required for sending authorized requests)
-	pub auth: Option<auth::Auth>,
+	pub auth: Option<auth::OAuth>,
 	/// User agent for the client
 	pub useragent: UserAgent,
 	/// HTTP client
@@ -45,7 +45,7 @@ pub struct Connection {
 impl Connection {
 	pub fn new(appname: &str, appversion: &str, appauthor: &str) -> Result<Connection, Error> {
 		let useragent = UserAgent::new(format!(
-			"orca:{}:{} (by {})",
+			"linux:{}:{} (by {})",
 			appname,
 			appversion,
 			appauthor
@@ -62,7 +62,7 @@ impl Connection {
 	}
 
 	/// Send a request to reddit
-	pub fn run_request(&self, req: Request) -> Result<Value, RedditError> {
+	pub fn run_request(&self, mut req: Request) -> Result<Value, RedditError> {
 		// Ratelimit based on method chosen type
 		match self.limit.get() {
 			LimitMethod::Steady => {
@@ -91,6 +91,8 @@ impl Connection {
 			}
 		};
 
+
+		req.headers_mut().set(self.useragent.clone());
 		// Execute the request!
 		let mut response = match self.client.execute(req) {
 			Ok(resp) => resp,
@@ -126,7 +128,6 @@ impl Connection {
 		}
 
 		if !response.status().is_success() {
-			println!("Got status {}", response.status());
 			return Err(RedditError::BadRequest);
 		}
 
@@ -139,11 +140,52 @@ impl Connection {
 	/// Send a request to reddit with authorization headers
 	pub fn run_auth_request(&self, mut req: Request) -> Result<Value, RedditError> {
 		// Check if this connection is authorized
-		if let Some(ref auth) = self.auth.clone() {
-			req.headers_mut().set(Authorization(
-				Bearer { token: auth.token.clone() },
-			));
+		// This shit's some fuckin spaghetti tho now yo
+		// TODO cleanup
 
+		if let Some(ref auth) = self.auth {
+			req.headers_mut().set_raw(
+				"Authorization",
+				format!(
+					"Bearer {}",
+					match *auth {
+						OAuth::Script {
+							ref id,
+							ref secret,
+							ref username,
+							ref password,
+							ref token,
+						} => token.to_string(),
+						OAuth::InstalledApp {
+							ref id,
+							ref redirect,
+							ref token,
+							ref refresh_token,
+							ref expire_instant,
+						} => {
+							// If the token can expire and we are able to refresh it
+							if let (Some(refresh_token), Some(expire_instant)) = (refresh_token.borrow().clone(), expire_instant.get()) {
+								// If the token's expired, refresh it
+								if Instant::now() > expire_instant {
+									auth.refresh(&self);
+								}
+								token.borrow().to_string()
+
+							} else if let Some(expire_instant) = expire_instant.get() {
+								if Instant::now() > expire_instant {
+									return Err(RedditError::Forbidden);
+								} else {
+									token.borrow().to_string()
+								}
+							} else {
+								token.borrow().to_string()
+							}
+						}
+						_ => unimplemented!(),
+
+					}
+				),
+			);
 			self.run_request(req)
 		} else {
 			Err(RedditError::Forbidden)

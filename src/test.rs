@@ -4,9 +4,9 @@ use std::thread;
 use net::LimitMethod;
 use data::Post;
 
-fn init_reddit() -> App {
+fn source_env() -> Result<(String, String, String, String, String, String), ()> {
 	use std::env;
-	let get_env = |var| -> String {
+	fn get_env(var: &str) -> String {
 		match env::var(var) {
 			Ok(item) => item,
 			_ => panic!("{} must be set", var),
@@ -15,12 +15,32 @@ fn init_reddit() -> App {
 
 	let username = get_env("REDDIT_USERNAME");
 	let password = get_env("REDDIT_PASSWORD");
-	let id = get_env("REDDIT_APP_ID");
-	let secret = get_env("REDDIT_APP_SECRET");
+	let script_id = get_env("REDDIT_SCRIPT_ID");
+	let secret = get_env("REDDIT_SCRIPT_SECRET");
+	let installed_id = get_env("REDDIT_INSTALLED_ID");
+	let redirect = get_env("REDDIT_INSTALLED_REDIRECT");
 
-	let mut reddit = App::new("OrcaLibTestYes", "v0.0.3", "/u/IntrepidPig2").unwrap();
+	Ok((
+		username,
+		password,
+		script_id,
+		secret,
+		installed_id,
+		redirect,
+	))
+}
 
-	reddit.authorize(username, password, net::auth::OauthApp::Script { id, secret });
+fn init_reddit() -> App {
+	let mut reddit = App::new("OrcaLibTest", "v0.2.0", "/u/IntrepidPig").unwrap();
+	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
+	reddit
+		.authorize(&net::auth::OauthApp::Script {
+			id: script_id,
+			secret,
+			username,
+			password,
+		})
+		.unwrap();
 
 	reddit
 }
@@ -30,6 +50,20 @@ fn get_posts() {
 	init_reddit()
 		.get_posts("unixporn", Sort::Top(SortTime::All))
 		.unwrap();
+}
+
+#[test(auth_installed)]
+fn auth_installed_app() {
+	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
+	let mut reddit = App::new("Orca Test Installed App", "v0.2.0", "/u/IntrepidPig").unwrap();
+	reddit
+		.authorize(&net::auth::OauthApp::InstalledApp {
+			id: installed_id,
+			redirect,
+		})
+		.unwrap();
+
+	reddit.get_self().unwrap();
 }
 
 #[test(sort)]
@@ -80,7 +114,7 @@ fn comment_stream() {
 			_ => panic!("This was not supposed to happen"),
 		}
 
-		if count > 2000 {
+		if count > 500 {
 			break;
 		};
 	}
@@ -114,7 +148,7 @@ fn comment_tree() {
 	print_tree(tree, 0);
 }
 
-#[test(Stress)]
+//#[test(Stress)]
 fn stress_test() {
 	let requests = 60;
 
@@ -148,10 +182,10 @@ fn sticky() {
 	let reddit = init_reddit();
 
 	reddit.set_sticky(true, Some(2), "t3_6u65br").unwrap();
-	println!("Set sticky, unsetting in 30 seconds");
+	println!("Set sticky, unsetting in 10 seconds");
 	thread::sleep(Duration::new(5, 0));
 
-	thread::sleep(Duration::new(30, 0));
+	thread::sleep(Duration::new(10, 0));
 	reddit.set_sticky(false, Some(2), "t3_6u65br").unwrap();
 	println!("Unset sticky");
 }

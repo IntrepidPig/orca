@@ -10,6 +10,10 @@ extern crate serde;
 extern crate serde_derive;
 #[macro_use]
 extern crate serde_json as json;
+extern crate open;
+extern crate tiny_http;
+extern crate url;
+extern crate rand;
 
 use std::fmt;
 use std::fmt::Display;
@@ -34,7 +38,7 @@ use errors::{Forbidden, BadRequest, RedditError, BadResponse, NotFound};
 use failure::{Fail, Error, err_msg};
 
 use net::Connection;
-use net::auth::{Auth, OauthApp};
+use net::auth::{OAuth, OauthApp};
 use data::{Comment, CommentData, Comments, Listing, Sort, SortTime, Thing};
 
 /// A reddit object
@@ -66,8 +70,8 @@ impl App {
 	/// # Returns
 	/// A result containing either an Auth object or a certain error
 	/// To use place it in the auth field of a connection struct
-	pub fn authorize(&mut self, username: String, password: String, oauth: net::auth::OauthApp) -> Result<(), RedditError> {
-		self.conn.auth = match Auth::new(&self.conn, oauth, username, password) {
+	pub fn authorize(&mut self, oauth: &net::auth::OauthApp) -> Result<(), RedditError> {
+		self.conn.auth = match OAuth::new(&self.conn, oauth) {
 			Ok(auth) => Some(auth),
 			Err(_) => return Err(RedditError::Forbidden),
 		};

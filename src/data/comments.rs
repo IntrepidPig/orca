@@ -118,7 +118,8 @@ impl Thing for Comment {
 	fn get_json(&self) -> &Value {
 		match self {
 			&Comment::Loaded(ref data) => &data.raw,
-			&Comment::NotLoaded(ref _id) => { // TODO fix
+			&Comment::NotLoaded(ref _id) => {
+				// TODO fix
 				panic!("Shit");
 			}
 		}
