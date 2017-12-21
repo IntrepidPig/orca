@@ -3,8 +3,11 @@ name = "orca"
 version = "0.2.0"
 authors = ["Benny A <virusdownloader7@gmail.com>"]
 description = "A Reddit API client for Rust"
+readme = "README.md"
+documentation = "https://docs.rs/orca"
 repository = "https://github.com/IntrepidPig/orca"
 license = "MPL-2.0"
+keywords = ["client", "api", "reddit"]
 
 [dependencies]
 chrono = "0.4"

@@ -5,6 +5,7 @@ A simple reddit API interface for Rust
 - Comment streams from entire subreddits
 - Comment tree traversing
 - Oauth script authorization
+- Oauth installed app authorization
 - Self post submissions
 - User info
 - Comment data structure
@@ -15,7 +16,6 @@ A simple reddit API interface for Rust
 
 ### Features Todo (nonexhaustive):
 - All data structures, or maybe pure json. Consistency is the goal.
-- Oauth installed app type
 - Better documentation
 - More reddit api implementation
 

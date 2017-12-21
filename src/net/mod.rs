@@ -181,8 +181,6 @@ impl Connection {
 								token.borrow().to_string()
 							}
 						}
-						_ => unimplemented!(),
-
 					}
 				),
 			);
