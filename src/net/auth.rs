@@ -56,7 +56,7 @@ pub enum OAuth {
 }
 
 impl OAuth {
-	pub fn refresh(&self, conn: &Connection) {
+	pub fn refresh(&self, _conn: &Connection) {
 		unimplemented!();
 	}
 
@@ -177,7 +177,7 @@ impl OAuth {
 						Err(_) => return Err(AuthError {}),
 					};
 
-					if let (Some(expires_in), Some(token), Some(refresh_token), Some(scope)) =
+					if let (Some(expires_in), Some(token), Some(refresh_token), Some(_scope)) =
 						(
 							response.get("expires_in"),
 							response.get("access_token"),

@@ -150,21 +150,21 @@ impl Connection {
 					"Bearer {}",
 					match *auth {
 						OAuth::Script {
-							ref id,
-							ref secret,
-							ref username,
-							ref password,
+							id: ref _id,
+							secret: ref _secret,
+							username: ref _username,
+							password: ref _password,
 							ref token,
 						} => token.to_string(),
 						OAuth::InstalledApp {
-							ref id,
-							ref redirect,
+							id: ref _id,
+							redirect: ref _redirect,
 							ref token,
 							ref refresh_token,
 							ref expire_instant,
 						} => {
 							// If the token can expire and we are able to refresh it
-							if let (Some(refresh_token), Some(expire_instant)) = (refresh_token.borrow().clone(), expire_instant.get()) {
+							if let (Some(_refresh_token), Some(expire_instant)) = (refresh_token.borrow().clone(), expire_instant.get()) {
 								// If the token's expired, refresh it
 								if Instant::now() > expire_instant {
 									auth.refresh(&self);
