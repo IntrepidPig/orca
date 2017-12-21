@@ -18,6 +18,7 @@ A simple reddit API interface for Rust
 - All data structures, or maybe pure json. Consistency is the goal.
 - Better documentation
 - More reddit api implementation
+- More complete error handling
 
 
 ### Contributing
