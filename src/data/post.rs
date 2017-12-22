@@ -1,6 +1,7 @@
 use json::Value;
 use data::Thing;
 use errors::*;
+use failure::Error;
 
 #[derive(Debug)]
 pub struct Post {
@@ -10,7 +11,7 @@ pub struct Post {
 impl Post {}
 
 impl Thing for Post {
-	fn from_value(data: &Value) -> Result<Post, RedditError> {
+	fn from_value(data: &Value) -> Result<Post, Error> {
 		Ok(Post { raw: data.clone() })
 	}
 

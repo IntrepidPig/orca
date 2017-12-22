@@ -6,14 +6,20 @@ pub mod error;
 use std::io::Read;
 use std::time::{Duration, Instant};
 use std::thread;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 
 use json;
 use json::Value;
-use http::{Client, Method, Request, Url};
-use http::header::{Authorization, Bearer, UserAgent, Basic};
+use hyper::client::{Client, HttpConnector};
+use hyper::{Body, Request, Response};
+use hyper_tls::HttpsConnector;
+use hyper::header::{Authorization, Bearer, UserAgent, Basic};
+use tokio_core::reactor::Core;
+use futures::{Future, Stream};
 
 use errors::{BadRequest, RedditError, Forbidden};
+use errors::*;
 use self::auth::{OAuth, OauthApp};
 
 use failure::{Fail, Error, err_msg};
@@ -31,7 +37,9 @@ pub struct Connection {
 	/// User agent for the client
 	pub useragent: UserAgent,
 	/// HTTP client
-	pub client: Client,
+	pub client: Client<HttpsConnector<HttpConnector>, Body>,
+	/// Tokio core
+	core: RefCell<Core>,
 	/// How to ratelimit (burst or steady)
 	pub limit: Cell<LimitMethod>,
 	/// Requests sent in the past ratelimit period
@@ -50,10 +58,16 @@ impl Connection {
 			appversion,
 			appauthor
 		));
+		let core = Core::new()?;
+		let handle = core.handle();
+		let client = Client::configure()
+				.connector(HttpsConnector::new(1, &handle)?)
+				.build(&handle);
 		Ok(Connection {
 			auth: None,
 			useragent,
-			client: Client::new()?,
+			client,
+			core: RefCell::new(core),
 			limit: Cell::new(LimitMethod::Steady),
 			reqs: Cell::new(0),
 			remaining: Cell::new(None),
@@ -62,7 +76,7 @@ impl Connection {
 	}
 
 	/// Send a request to reddit
-	pub fn run_request(&self, mut req: Request) -> Result<Value, RedditError> {
+	pub fn run_request(&self, mut req: Request) -> Result<Value, Error> {
 		// Ratelimit based on method chosen type
 		match self.limit.get() {
 			LimitMethod::Steady => {
@@ -94,12 +108,10 @@ impl Connection {
 
 		req.headers_mut().set(self.useragent.clone());
 		// Execute the request!
-		let mut response = match self.client.execute(req) {
-			Ok(resp) => resp,
-			Err(_) => return Err(RedditError::BadRequest),
-		};
-		let mut out = String::new();
-		response.read_to_string(&mut out).unwrap();
+		println!("Sending request: {:?}", req);
+		let response = self.client.request(req);
+		let response = self.core.borrow_mut().run(response)?;
+		println!("Got response: {:?}", response);
 
 		// Update values from response ratelimiting headers
 		if let Some(reqs_used) = response.headers().get_raw("x-ratelimit-used") {
@@ -128,21 +140,24 @@ impl Connection {
 		}
 
 		if !response.status().is_success() {
-			return Err(RedditError::BadRequest);
+			return Err(Error::from(RedditError::BadRequest));
 		}
-
-		match json::from_str(&out) {
+		
+		println!("Getting body");
+		let body = response.body().concat2().wait()?;
+		println!("Finished, result: {}", String::from_utf8_lossy(&body));
+		
+		match json::from_slice(&body) {
 			Ok(r) => Ok(r),
-			Err(_) => Err(RedditError::BadResponse { response: out }),
+			Err(_) => Err(Error::from(RedditError::BadResponse { response: String::from_utf8_lossy(&body).into() })),
 		}
 	}
 
 	/// Send a request to reddit with authorization headers
-	pub fn run_auth_request(&self, mut req: Request) -> Result<Value, RedditError> {
+	pub fn run_auth_request(&self, mut req: Request) -> Result<Value, Error> {
 		// Check if this connection is authorized
 		// This shit's some fuckin spaghetti tho now yo
 		// TODO cleanup
-
 		if let Some(ref auth) = self.auth {
 			req.headers_mut().set_raw(
 				"Authorization",
@@ -173,7 +188,7 @@ impl Connection {
 
 							} else if let Some(expire_instant) = expire_instant.get() {
 								if Instant::now() > expire_instant {
-									return Err(RedditError::Forbidden);
+									return Err(Error::from(RedditError::Forbidden));
 								} else {
 									token.borrow().to_string()
 								}
@@ -186,11 +201,22 @@ impl Connection {
 			);
 			self.run_request(req)
 		} else {
-			Err(RedditError::Forbidden)
+			Err(Error::from(RedditError::Forbidden))
 		}
 	}
 
 	pub fn set_limit(&self, limit: LimitMethod) {
 		self.limit.set(limit);
 	}
+}
+
+pub fn body_from_map(map: &HashMap<&str, &str>) -> Body {
+	let mut body_str = String::new();
+	
+	for (i, item) in map.iter().enumerate() {
+		// Push the paramater to the body with an & at the end unless it's the last parameter
+		body_str.push_str(&format!("{}={}{}", item.0, item.1, if i < map.len() - 1{ "&" } else { "" }));
+	}
+	
+	Body::from(body_str)
 }

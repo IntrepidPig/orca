@@ -52,8 +52,8 @@ fn get_posts() {
 		.unwrap();
 }
 
-#[test(auth_installed)]
-fn auth_installed_app() {
+#[test(installed_auth)]
+fn installed_app_auth() {
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
 	let mut reddit = App::new("Orca Test Installed App", "v0.2.0", "/u/IntrepidPig").unwrap();
 	reddit
@@ -204,7 +204,7 @@ fn message() {
 
 	reddit
 		.message("intrepidpig", "please don't spam me", "oops")
-		.unwrap_or_else(|e| println!("{}", e));
+		.unwrap();
 }
 
 //#[test(submit)]

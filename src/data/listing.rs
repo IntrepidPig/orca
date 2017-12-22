@@ -5,6 +5,7 @@ use json::Value;
 
 use data::{Comment, CommentData, Thing};
 
+use failure::Error;
 use errors::RedditError;
 
 #[derive(Debug, Clone)]
@@ -27,7 +28,7 @@ impl<T> Iterator for Listing<T> {
 }
 
 impl Listing<Comment> {
-	pub fn from_value(listing: &Value) -> Result<Listing<Comment>, RedditError> {
+	pub fn from_value(listing: &Value) -> Result<Listing<Comment>, Error> {
 		let mut children: VecDeque<Comment> = VecDeque::new();
 
 		if let Some(array) = listing["data"]["children"].as_array() {
@@ -37,7 +38,7 @@ impl Listing<Comment> {
 					children.push_back(if let Ok(c) = Comment::from_value(item) {
 						c
 					} else {
-						return Err(RedditError::BadResponse { response: listing.to_string() });
+						return Err(Error::from(RedditError::BadResponse { response: listing.to_string() }));
 					});
 				} else if kind == "more" {
 					for extra in item["data"]["children"].as_array().unwrap() {
@@ -48,9 +49,9 @@ impl Listing<Comment> {
 
 			Ok(Listing { children })
 		} else {
-			Err(RedditError::BadResponse {
+			Err(Error::from(RedditError::BadResponse {
 				response: json::to_string(listing).unwrap(),
-			})
+			}))
 		}
 	}
 }

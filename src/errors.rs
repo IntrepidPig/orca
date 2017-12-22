@@ -8,7 +8,9 @@ pub struct NotFound {}
 
 #[derive(Debug, Fail)]
 #[fail(display = "The requested resource is forbidden")]
-pub struct Forbidden {}
+pub struct Forbidden {
+
+}
 
 #[derive(Debug, Fail)]
 #[fail(display = "Got an unexpected reponse:\n{}", response)]

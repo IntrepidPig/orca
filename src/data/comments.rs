@@ -1,6 +1,7 @@
 use json;
 use json::Value;
 
+use failure::{err_msg, Error};
 use errors::RedditError;
 use data::{Listing, Thing};
 
@@ -31,11 +32,11 @@ pub struct CommentData {
 }
 
 impl Thing for Comment {
-	fn from_value(val: &Value) -> Result<Comment, RedditError> {
+	fn from_value(val: &Value) -> Result<Comment, Error> {
 		// nice
 		macro_rules! out {
 			($val:ident) => {
-				return Err(RedditError::BadResponse { response: $val.to_string() });
+				return Err(Error::from(RedditError::BadResponse { response: $val.to_string() }));
 			};
 		}
 
@@ -94,7 +95,7 @@ impl Thing for Comment {
 		let replies: Listing<Comment> = match val["replies"] {
 			Value::String(_) => Listing::empty(),
 			Value::Object(_) => Listing::from_value(&val["replies"]).unwrap(),
-			_ => panic!("Unexpected value for \"replies\": {}", val["replies"]),
+			_ => return Err(err_msg(format!("Unexpected value for \"replies\": {}", val["replies"]))),
 		};
 
 		Ok(Comment::Loaded(Box::new(CommentData {

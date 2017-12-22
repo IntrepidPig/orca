@@ -5,7 +5,8 @@ use std::time::Duration;
 
 use json;
 use json::Value;
-use http::{Method, Request, Url};
+use hyper::{Request, Method};
+use url::Url;
 
 use net::Connection;
 use data::{Comment, CommentData, Listing};
@@ -47,7 +48,7 @@ impl<'a> Comments<'a> {
 					self.sub
 				),
 				params,
-			).unwrap(),
+			).unwrap().into_string().parse().unwrap(), // TODO clean
 		);
 
 		let resp = self.conn.run_request(req).unwrap();
