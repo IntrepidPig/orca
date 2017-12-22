@@ -1,6 +1,6 @@
 [package]
 name = "orca"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Benny A <virusdownloader7@gmail.com>"]
 description = "A Reddit API client for Rust"
 readme = "README.md"
