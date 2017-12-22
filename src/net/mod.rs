@@ -108,10 +108,8 @@ impl Connection {
 
 		req.headers_mut().set(self.useragent.clone());
 		// Execute the request!
-		println!("Sending request: {:?}", req);
 		let response = self.client.request(req);
 		let response = self.core.borrow_mut().run(response)?;
-		println!("Got response: {:?}", response);
 
 		// Update values from response ratelimiting headers
 		if let Some(reqs_used) = response.headers().get_raw("x-ratelimit-used") {
@@ -143,9 +141,7 @@ impl Connection {
 			return Err(Error::from(RedditError::BadRequest));
 		}
 		
-		println!("Getting body");
-		let body = response.body().concat2().wait()?;
-		println!("Finished, result: {}", String::from_utf8_lossy(&body));
+		let body = self.core.borrow_mut().run(response.body().concat2())?;
 		
 		match json::from_slice(&body) {
 			Ok(r) => Ok(r),
