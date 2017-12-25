@@ -3,6 +3,7 @@ pub mod auth;
 /// Reddit errors
 pub mod error;
 
+use std::mem;
 use std::io::Read;
 use std::time::{Duration, Instant};
 use std::thread;
@@ -18,7 +19,7 @@ use hyper::header::{Authorization, Bearer, UserAgent, Basic};
 use tokio_core::reactor::Core;
 use futures::{Future, Stream};
 
-use errors::{BadRequest, RedditError, Forbidden};
+use errors::{BadRequest, RedditError};
 use errors::*;
 use self::auth::{OAuth, OauthApp};
 
@@ -77,6 +78,7 @@ impl Connection {
 
 	/// Send a request to reddit
 	pub fn run_request(&self, mut req: Request) -> Result<Value, Error> {
+		let req_str = format!("{:?}", req);
 		// Ratelimit based on method chosen type
 		match self.limit.get() {
 			LimitMethod::Steady => {
@@ -136,16 +138,23 @@ impl Connection {
 					Duration::new(secs_remaining, 0),
 			);
 		}
-
+		
+		let get_body = |response: Response| -> Result<String, Error> {
+			let body = self.core.borrow_mut().run(response.body().concat2())?;
+			let body: String = String::from_utf8_lossy(&body).into();
+			Ok(body)
+		};
+		
 		if !response.status().is_success() {
-			return Err(Error::from(RedditError::BadRequest));
+			let response_str = format!("{:?}", response);
+			return Err(Error::from(RedditError::BadRequest { request: req_str, response: format!("Reponse: {:?}\nResponse body: {:?}", response_str, get_body(response)) }));
 		}
 		
-		let body = self.core.borrow_mut().run(response.body().concat2())?;
+		let body = get_body(response)?;
 		
-		match json::from_slice(&body) {
+		match json::from_str(&body) {
 			Ok(r) => Ok(r),
-			Err(_) => Err(Error::from(RedditError::BadResponse { response: String::from_utf8_lossy(&body).into() })),
+			Err(_) => Err(Error::from(RedditError::BadResponse { request: req_str, response: body })),
 		}
 	}
 
@@ -155,6 +164,7 @@ impl Connection {
 		// This shit's some fuckin spaghetti tho now yo
 		// TODO cleanup
 		if let Some(ref auth) = self.auth {
+			let req_str = format!("{:?}", req);
 			req.headers_mut().set_raw(
 				"Authorization",
 				format!(
@@ -184,7 +194,7 @@ impl Connection {
 
 							} else if let Some(expire_instant) = expire_instant.get() {
 								if Instant::now() > expire_instant {
-									return Err(Error::from(RedditError::Forbidden));
+									return Err(Error::from(RedditError::Forbidden { request: format!("{:?}", req_str) }));
 								} else {
 									token.borrow().to_string()
 								}
@@ -197,7 +207,7 @@ impl Connection {
 			);
 			self.run_request(req)
 		} else {
-			Err(Error::from(RedditError::Forbidden))
+			Err(Error::from(RedditError::Forbidden { request: format!("{:?}", req) }))
 		}
 	}
 

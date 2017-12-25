@@ -1,3 +1,5 @@
+extern crate fern;
+
 use super::*;
 use std::time::Duration;
 use std::thread;
@@ -98,7 +100,7 @@ fn other_info() {
 	);
 }
 
-#[test(stream)]
+//#[test(stream)]
 fn comment_stream() {
 	let reddit = init_reddit();
 	let comments = reddit.get_comments("all");
@@ -108,7 +110,7 @@ fn comment_stream() {
 	for comment in comments {
 		count += 1;
 		match comment {
-			Comment::Loaded(data) => {
+			Thread::Comment(data) => {
 				println!("Got comment #{} by {}", count, data.author);
 			}
 			_ => panic!("This was not supposed to happen"),
@@ -123,23 +125,23 @@ fn comment_stream() {
 #[test(tree)]
 fn comment_tree() {
 	let reddit = init_reddit();
-	let tree = reddit.get_comment_tree("2np694").unwrap();
+	let tree = reddit.get_comment_tree("7le01h").unwrap();
 
-	fn print_tree(listing: Listing<Comment>, level: i32) {
+	fn print_tree(listing: Listing<Thread>, level: i32) {
 		for comment in listing {
 			match comment {
-				Comment::Loaded(data) => {
+				Thread::Comment(data) => {
 					for _ in 0..level {
 						print!("\t");
 					}
 					println!("Comment by {}", data.author);
 					print_tree(data.replies, level + 1);
 				}
-				Comment::NotLoaded(ids) => {
+				Thread::More(ids) => {
 					for _ in 0..level {
 						print!("\t");
 					}
-					println!("Comment id: {}", ids);
+					println!("Comment id: {:?}", ids);
 				}
 			}
 		}

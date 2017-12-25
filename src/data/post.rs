@@ -2,6 +2,7 @@ use json::Value;
 use data::Thing;
 use errors::*;
 use failure::Error;
+use App;
 
 #[derive(Debug)]
 pub struct Post {
@@ -11,7 +12,7 @@ pub struct Post {
 impl Post {}
 
 impl Thing for Post {
-	fn from_value(data: &Value) -> Result<Post, Error> {
+	fn from_value(data: &Value, _app: &App) -> Result<Post, Error> {
 		Ok(Post { raw: data.clone() })
 	}
 

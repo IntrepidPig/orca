@@ -9,72 +9,66 @@ use hyper::{Request, Method};
 use url::Url;
 
 use net::Connection;
-use data::{Comment, CommentData, Listing};
+use data::{Comment, Thread, Listing, Thing};
+use App;
 
 pub struct Comments<'a> {
 	sub: String,
-	cache: VecDeque<Comment>,
+	cache: VecDeque<Thread>,
 	last: Option<String>,
-	conn: &'a Connection,
+	app: &'a App,
 }
 
 impl<'a> Comments<'a> {
 	// TODO fix all the unwraps
-	pub fn new(conn: &'a Connection, sub: &str) -> Comments<'a> {
-		let cache: VecDeque<Comment> = VecDeque::new();
+	pub fn new(app: &'a App, sub: &str) -> Comments<'a> {
+		let cache: VecDeque<Thread> = VecDeque::new();
 		let last = None;
 
 		Comments {
 			sub: sub.to_string(),
-			cache: cache,
-			last: last,
-			conn: conn,
+			cache,
+			last,
+			app,
 		}
 	}
 
-	fn refresh(&mut self) {
+	fn refresh(&mut self, app: &App) {
 		let mut params: HashMap<String, String> = HashMap::new();
 		if let Some(last) = self.last.clone() {
 			params.insert("before".to_string(), last);
 			params.insert("limit".to_string(), "500".to_string());
 		}
 
-		let req = Request::new(
-			Method::Get,
-			Url::parse_with_params(
-				&format!(
-					"https://www.reddit.\
-                     com/r/{}/comments/.json",
-					self.sub
-				),
-				params,
-			).unwrap().into_string().parse().unwrap(), // TODO clean
-		);
+		let mut resp = app.get_comments(&self.sub);
 
-		let resp = self.conn.run_request(req).unwrap();
-
-		self.last = Some(
-			resp["data"]["children"][0]["data"]["name"]
-				.as_str()
-				.unwrap_or_default()
-				.to_string(),
-		);
-
-		let mut new: Listing<Comment> = Listing::from_value(&resp).unwrap();
-
-		self.cache.append(&mut new.children);
+		match resp.by_ref().peekable().peek() {
+			Some(thread) => {
+				match *thread {
+					Thread::Comment(ref comment) => {
+						self.last = Some(comment.id.clone());
+					},
+					Thread::More(ref ids) => {
+						self.last = Some(ids[0].clone());
+					}
+				}
+			},
+			None => {}
+		}
+		
+		self.cache.append(&mut resp.cache);
 	}
 }
 
 impl<'a> Iterator for Comments<'a> {
-	type Item = Comment;
+	type Item = Thread;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if let Some(val) = self.cache.pop_front() {
 			Some(val)
 		} else {
 			while self.cache.is_empty() {
-				self.refresh();
+				self.refresh(self.app);
 			}
 			self.cache.pop_front()
 		}
