@@ -54,7 +54,7 @@
 //!
 //! Installed apps, unlike scripts, require periodic reauthorization, or will expire without the
 //! possibility of refreshing if a permanent duration wasn't requested. This should be done
-//! automatically by the `net::Connection` instance. (Currently not implemented, sorry).
+//! automatically by the `net::Connection` instance.
 
 use std::collections::HashMap;
 use std::thread;
