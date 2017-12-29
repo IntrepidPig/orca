@@ -26,4 +26,4 @@ hyper-tls = "*"
 log = "0.3"
 
 [dev-dependencies]
-env_logger = "*"
+env_logger = "0.4"
