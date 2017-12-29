@@ -41,7 +41,7 @@ print_tree(tree, 0);
 ### Example: Authorizing as Ouath Script type
 ```rust
 let mut app = App::new("appnamehere", "v0.0.2", "/u/usernamehere/");
-reddit.conn.auth = Some(reddit.authorize(username, password, OauthApp::Script(app_id, app_secret)).unwrap());
+reddit.conn.auth = Some(reddit.authorize(OauthApp::Script(app_id, app_secret, username, password)).unwrap());
 ```
 
 > Generic Notice: This is an unstable project yadda yadda yadda use it if you dare thanks
