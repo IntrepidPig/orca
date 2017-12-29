@@ -60,13 +60,17 @@ use std::collections::HashMap;
 use std::thread;
 use std::time::{Instant, Duration};
 use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+use std::net::SocketAddr;
 use rand::{self, Rng};
 
-use hyper::{Request, Method};
+use hyper::{Request, Method, Error as HyperError, Uri, Server};
+use hyper::server::{Service, Http, Response};
 use hyper::header::{Authorization, Basic};
+use futures::{self, Poll, Async, Future};
+use futures::future::ok;
 use open;
-use tiny_http::{Server, Response};
-use url;
+use url::{self, Url};
 use failure::Error;
 
 use errors::RedditError;
@@ -85,7 +89,11 @@ pub enum OauthApp {
 		/// Id of the app
 		id: String,
 		/// Redirect url of the installed app
-		redirect: String
+		redirect: String,
+		/// Value to show user when authorization is successful
+		success_response: Option<String>,
+		/// Value to show user when authorization failed
+		error_response: Option<String>,
 	},
 	/// Where args are (app id, app secret, username, password)
 	Script {
@@ -129,7 +137,7 @@ pub enum OAuth {
 		refresh_token: RefCell<Option<String>>,
 		/// Instant when the current token expires
 		expire_instant: Cell<Option<Instant>>,
-	},
+	}
 }
 
 impl OAuth {
@@ -188,18 +196,20 @@ impl OAuth {
 			InstalledApp {
 				ref id,
 				ref redirect,
+				ref success_response,
+				ref error_response,
 			} => {
 				// Random state string to identify this authorization instance
 				let state = &rand::thread_rng()
-					.gen_ascii_chars()
-					.take(16)
-					.collect::<String>();
-
+						.gen_ascii_chars()
+						.take(16)
+						.collect::<String>();
+				
 				// Permissions (scopes) to authorize, should be customizable in the future
 				let scopes = "identity,edit,flair,history,modconfig,modflair,modlog,modposts,\
 				                     modwiki,mysubreddits,privatemessages,read,report,save,submit,\
 				                     subscribe,vote,wikiedit,wikiread,account"; // TODO customizable
-
+				
 				let browser_uri = format!(
 					"https://www.reddit.com/api/v1/authorize?client_id={}&response_type=code&\
 				            state={}&redirect_uri={}&duration=permanent&scope={}",
@@ -208,83 +218,145 @@ impl OAuth {
 					redirect,
 					scopes
 				);
-
+				
 				// Open the auth url in the browser so the user can authenticate the app
 				thread::spawn(move || {
 					open::that(browser_uri).expect("Failed to open browser");
 				});
-
-				// Start http server to recieve the request from the redirect uri
-				let server = Server::http("127.0.0.1:7878").unwrap();
-
-				// Parse request url to get token and stuff
-				let req = server.recv().unwrap();
-				let params = {
-					let iter = url::form_urlencoded::parse(&req.url()[2..].as_bytes()).into_owned(); // Substring to cut out "/?"
-					let mut map: HashMap<String, String> = HashMap::new();
-
-					for i in iter {
-						map.insert(i.0, i.1);
-					}
-					map
-				};
-				req.respond(Response::from_string("Authorization successful"))
-					.unwrap(); // TODO make this customizable
-
-				if let (Some(new_state), Some(code)) = (params.get("state"), params.get("code")) {
-					if new_state != state {
-						return Err(Error::from(RedditError::AuthError));
-					}
-
-					let mut params: HashMap<&str, &str> = HashMap::new();
-					params.insert("grant_type", "authorization_code");
-					params.insert("code", code);
-					params.insert("redirect_uri", redirect);
-
-					// Request for the access token
-					let mut tokenreq = Request::new(
-						Method::Post,
-						"https://ssl.reddit.com/api/v1/access_token/.json".parse()?,
-					); // httpS is important
-					tokenreq.set_body(body_from_map(&params));
-					tokenreq.headers_mut().set(Authorization(Basic {
-						username: id.clone(),
-						password: None,
-					}));
-
-					// Send the request and get the access token as a response
-					let mut response = conn.run_request(tokenreq)?;
-
-					if let (Some(expires_in), Some(token), Some(refresh_token), Some(_scope)) =
-						(
-							response.get("expires_in"),
-							response.get("access_token"),
-							response.get("refresh_token"),
-							response.get("scope"),
-						)
-					{
-						Ok(OAuth::InstalledApp {
-							id: id.to_string(),
-							redirect: redirect.to_string(),
-							token: RefCell::new(token.as_str().unwrap().to_string()),
-							refresh_token: RefCell::new(Some(refresh_token.to_string())),
-							expire_instant: Cell::new(Some(
-								Instant::now() +
-									Duration::new(
-										expires_in.to_string().parse::<u64>().unwrap(),
-										0,
-									),
-							)),
-						})
-					} else {
-						Err(Error::from(RedditError::AuthError))
-					}
-				} else {
+				
+				let mut finish = Rc::new(AuthFuture(false));
+				
+				let success_response = success_response.clone();
+				let error_response = error_response.clone();
+				
+				let coderef = Rc::new(RefCell::new(String::new()));
+				
+				let server = Http::new().bind(&"127.0.0.1".parse()?, || Ok({
+					// Start http server to recieve the request from the redirect uri
+					let service = InstalledAppService {
+						code: coderef.clone(),
+						finish_fut: finish.clone(),
+						state: state.clone(),
+						success_response: success_response.clone(),
+						error_response: error_response.clone()
+					};
+					
+					service
+				}))?;
+				
+				server.run_until(*&*finish);
+				let code = coderef.borrow().clone();
+				
+				let mut params: HashMap<&str, &str> = HashMap::new();
+				params.insert("grant_type", "authorization_code");
+				params.insert("code", &code);
+				params.insert("redirect_uri", redirect);
+				
+				// Request for the access token
+				let mut tokenreq = Request::new(
+					Method::Post,
+					"https://ssl.reddit.com/api/v1/access_token/.json".parse()?,
+				); // httpS is important
+				tokenreq.set_body(body_from_map(&params));
+				tokenreq.headers_mut().set(Authorization(Basic {
+					username: id.clone(),
+					password: None,
+				}));
+				
+				// Send the request and get the access token as a response
+				let mut response = conn.run_request(tokenreq)?;
+				
+				if let (Some(expires_in), Some(token), Some(refresh_token), Some(_scope)) =
+				(
+					response.get("expires_in"),
+					response.get("access_token"),
+					response.get("refresh_token"),
+					response.get("scope"),
+				)
+						{
+							Ok(OAuth::InstalledApp {
+								id: id.to_string(),
+								redirect: redirect.to_string(),
+								token: RefCell::new(token.as_str().unwrap().to_string()),
+								refresh_token: RefCell::new(Some(refresh_token.to_string())),
+								expire_instant: Cell::new(Some(
+									Instant::now() +
+											Duration::new(
+												expires_in.to_string().parse::<u64>().unwrap(),
+												0,
+											),
+								)),
+							})
+						} else {
 					Err(Error::from(RedditError::AuthError))
 				}
 			}
 			// App types other than script and installed are unsupported right now
 			_ => unimplemented!(),
+		}
+	}
+}
+
+struct AuthFuture(bool);
+
+impl Future for AuthFuture {
+	type Item = ();
+	type Error = ();
+	
+	fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+		if self.0 {
+			Ok(Async::Ready(()))
+		} else {
+			Ok(Async::NotReady)
+		}
+	}
+}
+
+struct InstalledAppService {
+	code: Rc<RefCell<String>>,
+	finish_fut: Rc<AuthFuture>,
+	state: String,
+	success_response: Option<String>,
+	error_response: Option<String>
+}
+
+impl Service for InstalledAppService {
+	type Request = Request;
+	type Response = Response;
+	type Error = HyperError;
+	
+	type Future = Box<Future<Item=Self::Response, Error=Self::Error>>;
+	
+	fn call(&self, req: Request) -> Self::Future {
+		let url = Url::parse(req.uri().as_ref()).unwrap();
+		let params: HashMap<_, _> = url.query_pairs().into_owned().collect();
+		
+		if params.contains_key("error") {
+			warn!("Got failed authorization. Error was {}", params.get("error").unwrap());
+			Box::new(ok(Response::new().with_body(if let Some(resp) = self.error_response {
+				&resp
+			} else {
+				"Authorization failed"
+			})))
+		} else {
+			let state = params.get("state").unwrap();
+			if *state == self.state {
+				error!("State didn't match. Got state {}, needed state {}", state, self.state);
+				Box::new(ok(Response::new().with_body(if let Some(resp) = self.error_response {
+					&resp
+				} else {
+					"Authorization failed"
+				})))
+			} else {
+				let code = params.get("code").unwrap();
+				*self.code.borrow_mut() = code.clone();
+				self.finish_fut.0 = true;
+				Box::new(ok(Response::new().with_body(if let Some(resp) = self.success_response {
+					&resp
+				} else {
+					"Authorization successful!"
+				})))
+			}
 		}
 	}
 }
