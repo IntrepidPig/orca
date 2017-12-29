@@ -1,15 +1,14 @@
 use json::Value;
-use data::{Thing, Thread};
+use data::{Listing, Thing, Thread};
 use failure::Error;
 use App;
 
+/// A struct that represents a submission to reddit
 #[derive(Debug)]
 pub struct Post {
-	pub comments: Vec<Thread>,
-	pub raw: Value,
+	/// The comments on this post
+	pub comments: Listing<Thread>,
 }
-
-impl Post {}
 
 impl Thing for Post {
 	fn from_value(_data: &Value, _app: &App) -> Result<Post, Error> {

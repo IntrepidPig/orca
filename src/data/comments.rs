@@ -6,28 +6,50 @@ use errors::ParseError;
 use data::{Listing, Thing};
 use App;
 
+/// An enum representing a thread which can either be a comment or a more object that represents
+/// a list of comments that have not yet been loaded.
 #[derive(Debug, Clone)]
 pub enum Thread {
+	/// A comment
 	Comment(Box<Comment>),
+	/// A vector of strings that are the ids of comments that need to be loaded
 	More(Vec<String>),
 }
 
+/// A struct representing a reddit comment.
+/// Does not contain all fields possible in a comment yet.
 #[derive(Debug, Clone)]
 pub struct Comment {
+	/// The amount of seconds since the comment has been edited, if it has been.
 	pub edited: Option<f64>,
+	/// The id of the comment
 	pub id: String,
+	/// The id of the comments parent, can be either t1 or t3
 	pub parent_id: String,
+	/// The link that the comment is present in
 	pub link_id: String,
+	/// The username of the author of the comment
 	pub author: String,
+	/// The amount of upvotes the comment has recieved
 	pub ups: i64,
+	/// The amount of downvotes the comment has recieved
 	pub downs: i64,
+	/// The score of the comment (ups - downs)
 	pub score: i64,
+	/// The text of the comment
 	pub body: String,
+	/// Whether the comment was submitted by the same user that submitted the post
+	/// (the author is OP or not)
 	pub is_submitter: bool,
+	/// Whether the comment is stickied in the thread or not
 	pub stickied: bool,
+	/// The subreddit the comment was posted in
 	pub subreddit: String,
+	/// Whether the score of the comment is hidden
 	pub score_hidden: bool,
+	/// The fullname of the comment (includes the t1_ prefix)
 	pub name: String,
+	/// A listing of replies to this comment
 	pub replies: Listing<Comment>,
 }
 

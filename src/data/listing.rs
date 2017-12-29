@@ -9,13 +9,15 @@ use App;
 use failure::Error;
 use errors::ParseError;
 
-
+/// A listing of Things. Has special implementations, currently just for Comments.
 #[derive(Debug, Clone)]
 pub struct Listing<T> {
+	/// The contents of the Listing
 	pub children: VecDeque<T>,
 }
 
 impl<T> Listing<T> {
+	/// Creates a new empty listing
 	pub fn new() -> Listing<T> {
 		Listing {
 			children: VecDeque::new()
@@ -70,6 +72,7 @@ impl Listing<Comment> {
 		}
 	}
 	
+	/// Parses the listing from json, fetching more comments as necessary.
 	pub fn from_value(listing_data: &Value, post_id: &str, app: &App) -> Result<Listing<Comment>, Error> {
 		let mut listing: Listing<Comment> = Listing::new();
 		

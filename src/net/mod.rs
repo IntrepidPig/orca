@@ -1,7 +1,11 @@
+//! The module contains networking, http, ratelimiting, authorization and more functionality.
+//!
+//! Most use cases of this library will not require anything directly present in this module
+//! explicitly, but be sure to read the documentation in the auth module for any script that wants
+//! to authorize itself on reddit.
+
 /// Contains all functionality for OAuth and logins
 pub mod auth;
-/// Reddit errors
-pub mod error;
 
 use std::time::{Duration, Instant};
 use std::thread;
@@ -22,13 +26,18 @@ use self::auth::OAuth;
 
 use failure::Error;
 
+/// How to ratelimit
 #[derive(Copy, Clone)]
 pub enum LimitMethod {
+	/// Wait an even amount of time between each request
 	Steady,
+	/// Fire off requests as they come. It's possible there will be a long waiting time for the
+	/// next ratelimit period if too many are fired off at once.
 	Burst,
 }
 
-/// A connection holder to reddit. Holds authorization info if provided
+/// A connection holder to reddit. Holds authorization info if provided, and is in charge
+/// of ratelimiting.
 pub struct Connection {
 	/// Authorization info (optional, but required for sending authorized requests)
 	pub auth: Option<auth::OAuth>,
@@ -49,6 +58,11 @@ pub struct Connection {
 }
 
 impl Connection {
+	/// Creates a new connection instance to reddit
+	/// # Arguments
+	/// * `appname` - The name of the app
+	/// * `appversion` - The version of the app
+	/// * `appauthor` - The author of the app (should be in reddit form as /u/<username>)
 	pub fn new(appname: &str, appversion: &str, appauthor: &str) -> Result<Connection, Error> {
 		let useragent = UserAgent::new(format!(
 			"linux:{}:{} (by {})",
@@ -73,7 +87,8 @@ impl Connection {
 		})
 	}
 
-	/// Send a request to reddit
+	/// Send a request to reddit. This is where ratelimiting happens, as well as setting the
+	/// user agent.
 	pub fn run_request(&self, mut req: Request) -> Result<Value, Error> {
 		let req_str = format!("{:?}", req);
 		// Ratelimit based on method chosen type
@@ -231,11 +246,13 @@ impl Connection {
 		}
 	}
 
+	/// Set's the ratelimiting method
 	pub fn set_limit(&self, limit: LimitMethod) {
 		self.limit.set(limit);
 	}
 }
 
+/// Creates a HTTP/hyper Body from a hashmap, in urlencoded form.
 pub fn body_from_map(map: &HashMap<&str, &str>) -> Body {
 	let mut body_str = String::new();
 

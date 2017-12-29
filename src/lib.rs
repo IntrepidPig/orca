@@ -1,4 +1,65 @@
-#![feature(nll)]
+#![deny(missing_docs)]
+
+//! # orca
+//! orca is a library to make using the Reddit API from Rust easy
+//!
+//! ## Features
+//! orca has not yet implemented near all of the functionality available in the Reddit API, but
+//! enough has been implemented to make simple flexible scripts or apps. Some main functionality
+//! includes:
+//!
+//! * submitting self posts
+//! * automatic ratelimiting
+//! * commenting and replying
+//! * comment streams from subreddits
+//! * private messages
+//! * authorization as script or installed oauth app type
+//! * more stuff
+//!
+//! ## Structure
+//! All of the functionality necessary is available in the implementation of
+//! the `App` struct. Data structures are defined in orca::data. Networking code is present in
+//! the net module, which also contains OAuth authorization functionality.
+//!
+//! ## Usage
+//! To simply create a reddit app instance, do
+//!
+//! ```rust
+//! let mut reddit = App::new(name, version, author)
+//! ```
+//!
+//! where `name`, `version`, and `author` are all `&str`s.
+//!
+//! This instance can do actions that don't require authorization, such as retrieving a stream of
+//! comments from a subreddit, but actions such as commenting require authorization, which can be
+//! done multiple ways. The most common way for clients to authorize is as scripts, which can be
+//! done by just providing a username and password as well as the id and secret of the app that can
+//! be registered on the desktop site. It looks like this in code (assuming you already have a
+//! mutable reddit instance):
+//!
+//! ```rust
+//! reddit.authorize(OauthApp::Script {
+//!     id,
+//!     secret,
+//!     username,
+//!     password
+//! }).unwrap();
+//!
+//! ```
+//! More info can be found in the documentation for the net module
+//!
+//! Actually doing something is simple and similar to previous examples. To get info about the
+//! currently authorized user, simply call
+//!
+//! ```rust
+//! reddit.get_self()
+//! ```
+//!
+//! which will return a json value until the actual user data structure is implemented.
+//!
+//! ## Confused?
+//! You can contact me on reddit as intrepidpig, or any other site that has that username registered
+//!
 
 extern crate chrono;
 #[macro_use]
@@ -46,7 +107,7 @@ use data::{Comment, Comments, Listing, Sort, Thing};
 /// ## Usage:
 /// To create a new instance, use `Reddit::new()`
 pub struct App {
-	pub conn: net::Connection,
+	conn: net::Connection,
 }
 
 impl App {
@@ -105,6 +166,7 @@ impl App {
 	/// * `sub` - Name of the subreddit to submit a post to
 	/// * `title` - Title of the post
 	/// * `text` - Body of the post
+	/// * `sendreplies` - Whether replies should be forwarded to the inbox of the submitter
 	/// # Returns
 	/// A result with reddit's json response to the submission
 	pub fn submit_self(&self, sub: &str, title: &str, text: &str, sendreplies: bool) -> Result<Value, Error> {
@@ -137,7 +199,12 @@ impl App {
 
 		self.conn.run_auth_request(req)
 	}
-
+	
+	/// Gets information about a user that is not currently authorized
+	/// # Arguments
+	/// * `name` - username of the user to query
+	/// # Returns
+	/// A json value containing the user info
 	pub fn get_user(&self, name: &str) -> Result<Value, Error> {
 		let req = Request::new(
 			Method::Get,
@@ -155,6 +222,14 @@ impl App {
 		Comments::new(self, sub)
 	}
 	
+	/// Gets the most recent comments in a subreddit. This function is also usually called intenally but
+	/// can be called if a one time retrieval of recent comments from a subreddit is necessary
+	/// # Arguments
+	/// * `sub` - Subreddit to load recent comments from
+	/// * `limit` - Optional limit to amount of comments loaded
+	/// * `before` - Optional comment to be the starting point for the next comments loaded
+	/// # Returns
+	/// A listing of comments that should be flat (no replies)
 	pub fn get_recent_comments(&self, sub: &str, limit: Option<i32>, before: Option<String>) -> Result<Listing<Comment>, Error> {
 		let limit_str;
 		let before_str;
@@ -180,6 +255,8 @@ impl App {
 	/// either Loaded or NotLoaded
 	/// # Arguments
 	/// * `post` - The name of the post to retrieve the tree from
+	/// # Returns
+	/// A fully populated listing of commments (no `more` values)
 	pub fn get_comment_tree(&self, post: &str) -> Result<Listing<Comment>, Error> {
 		// TODO add sorting and shit
 		let mut req = Request::new(
@@ -200,7 +277,12 @@ impl App {
 		Listing::from_value(&data, post, &self)
 	}
 
-	/// Load more comments
+	/// Load more comments from a comment tree that is not completely loaded. This function at the moment can only be called
+	/// internally due to requiring `morechildren_id` that is not available in the `Thread` type.
+	/// # Arguments
+	/// * `link_id` - The id of the post that has the comments that are being loaded
+	/// * `morechildren_id` - The id of the morechildren object that is being loaded
+	/// * `comments` - Slice of `&str`s that are the ids of the comments to be loaded
 	pub fn more_children(&self, link_id: &str, morechildren_id: &str, comments: &[&str]) -> Result<Listing<Comment>, Error> {
 		let mut string = String::from("t3_");
 		let link_id = if !link_id.starts_with("t3_") {
@@ -267,7 +349,7 @@ impl App {
 		Ok(listing)
 	}
 
-	/// Comment on a thing
+	/// Comment on a thing. The `thing` can be a post, a comment, or a private message
 	/// # Arguments
 	/// * `text` - The body of the comment
 	/// * `thing` - Fullname of the thing to comment on
@@ -286,10 +368,10 @@ impl App {
 		Ok(())
 	}
 
-	/// Sticky a post in a subreddit
+	/// Sticky a post in a subreddit. Does nothing if the post is already stickied
 	/// # Arguments
 	/// * `sticky` - boolean value. True to set post as sticky, false to unset post as sticky
-	/// * `slot` - Optional slot number to fill (1 or 2)
+	/// * `slot` - Optional slot number to fill (can only be 1 or 2, and will error otherwise)
 	/// * `id` - _fullname_ of the post to sticky
 	#[allow(unused_must_use)] // Is allowed because the request errors if the post is already sticky but that's ok
 	pub fn set_sticky(&self, sticky: bool, slot: Option<i32>, id: &str) -> Result<(), Error> {
@@ -322,7 +404,9 @@ impl App {
 		Ok(())
 	}
 
-	/// Load a thing
+	/// Loads a thing and casts it to the type of anything as long as it implements the Thing trait. Experimental
+	/// # Arguments
+	/// * `fullame` - fullname of the thing
 	pub fn load_thing<T>(&self, fullname: &str) -> Result<T, Error>
 	where
 		T: Thing,
@@ -340,6 +424,11 @@ impl App {
 		T::from_value(&response, self)
 	}
 
+	/// Send a private message to a user
+	/// # Arguments
+	/// * `to` - Name of the user to send a message to
+	/// * `subject` - Subject of the message
+	/// * `body` - Body of the message
 	pub fn message(&self, to: &str, subject: &str, body: &str) -> Result<(), Error> {
 		let mut params: HashMap<&str, &str> = HashMap::new();
 		params.insert("to", to);

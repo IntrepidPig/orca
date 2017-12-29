@@ -3,6 +3,9 @@ use std::collections::VecDeque;
 use data::Comment;
 use App;
 
+/// A struct that represents a stream of comments from a subreddit as they are posted. To use it
+/// simply create a `for` loop with this is the source. It will automatically retrieve comments
+/// as needed. The subreddit can be `all` to create a stream of comments from all of reddit.
 pub struct Comments<'a> {
 	sub: String,
 	cache: VecDeque<Comment>,
@@ -11,7 +14,11 @@ pub struct Comments<'a> {
 }
 
 impl<'a> Comments<'a> {
-	// TODO fix all the unwraps
+	/// Creates a stream of comments from a subreddit
+	/// # Arguments
+	/// * `app` - A reference to a Reddit `App` instance
+	/// * `sub` - The subreddit to load comments from. Can be "all" to stream comments from all
+	/// of reddit.
 	pub fn new(app: &'a App, sub: &str) -> Comments<'a> {
 		let cache: VecDeque<Comment> = VecDeque::new();
 		let last = None;
@@ -52,10 +59,15 @@ impl<'a> Iterator for Comments<'a> {
 
 /// Sort type of a subreddit
 pub enum Sort {
+	/// Hot
 	Hot,
+	/// New
 	New,
+	/// Rising
 	Rising,
+	/// Top within the specified `SortTime`
 	Top(SortTime),
+	/// Most controversial within the specified `SortTime`
 	Controversial(SortTime),
 }
 
@@ -75,15 +87,22 @@ impl Sort {
 
 /// Time parameter of a subreddit sort
 pub enum SortTime {
+	/// Hour
 	Hour,
+	/// Day
 	Day,
+	/// Week
 	Week,
+	/// Month
 	Month,
+	/// Year
 	Year,
+	/// All time
 	All,
 }
 
 impl SortTime {
+	/// Convert the sort time to a tuple to be used in url parameters
 	pub fn param<'a>(self) -> (&'a str, &'a str) {
 		use self::SortTime::*;
 		(
