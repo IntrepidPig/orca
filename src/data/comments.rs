@@ -1,21 +1,22 @@
 use json;
 use json::Value;
 
-use failure::{err_msg, Error};
+use failure::{Error, err_msg};
 use errors::ParseError;
-use data::{Post, Listing, Thing};
+use data::{Listing, Thing};
 use App;
 
 #[derive(Debug, Clone)]
 pub enum Thread {
 	Comment(Box<Comment>),
-	More(Vec<String>)
+	More(Vec<String>),
 }
 
 #[derive(Debug, Clone)]
 pub struct Comment {
 	pub edited: Option<f64>,
 	pub id: String,
+	pub parent_id: String,
 	pub link_id: String,
 	pub author: String,
 	pub ups: i64,
@@ -27,20 +28,18 @@ pub struct Comment {
 	pub subreddit: String,
 	pub score_hidden: bool,
 	pub name: String,
-	pub replies: Listing<Thread>,
-	pub raw: Value,
+	pub replies: Listing<Comment>,
 }
 
-impl Thing for Thread {
-	fn from_value(val: &Value, app: &App) -> Result<Thread, Error> {
+impl Thing for Comment {
+	fn from_value(val: &Value, app: &App) -> Result<Comment, Error> {
 		// nice
 		macro_rules! out {
 			($val:ident) => {
-				return Err(Error::from(ParseError { thing_type: "Thread".to_string(), json: $val.clone() }));
+				return Err(Error::from(ParseError { thing_type: "Thread".to_string(), json: json::to_string_pretty($val).unwrap() }));
 			};
 		}
-
-		let raw = val.clone();
+		
 		let val = &val["data"];
 		let edited = match val["edited"] {
 			Value::Bool(_) => None,
@@ -49,6 +48,10 @@ impl Thing for Thread {
 			_ => panic!("Unexpected value for \"edited\": {}", val["edited"]),
 		};
 		let id: String = match val["id"].as_str() {
+			Some(t) => t.to_string(),
+			None => out!(val),
+		};
+		let parent_id: String = match val["parent_id"].as_str() {
 			Some(t) => t.to_string(),
 			None => out!(val),
 		};
@@ -96,15 +99,21 @@ impl Thing for Thread {
 			Some(t) => t.to_string(),
 			None => out!(val),
 		};
-		let replies: Listing<Thread> = match val["replies"] {
-			Value::String(_) => Listing::empty(),
+		let replies: Listing<Comment> = match val["replies"] {
+			Value::String(_) => Listing::new(),
 			Value::Object(_) => Listing::from_value(&val["replies"]["data"]["children"], &link_id, app).unwrap(),
-			_ => return Err(err_msg(format!("Unexpected value for \"replies\": {}", val["replies"]))),
+			_ => {
+				return Err(err_msg(format!(
+					"Unexpected value for \"replies\": {}",
+					val["replies"]
+				)))
+			}
 		};
 
-		Ok(Thread::Comment(Box::new(Comment {
+	Ok(Comment {
 			edited,
 			id,
+			parent_id,
 			link_id,
 			author,
 			ups,
@@ -117,17 +126,6 @@ impl Thing for Thread {
 			score_hidden,
 			name,
 			replies,
-			raw,
-		})))
-	}
-
-	fn get_json(&self) -> &Value {
-		match self {
-			&Thread::Comment(ref data) => &data.raw,
-			&Thread::More(ref _ids) => {
-				// TODO fix
-				panic!("Shit");
-			}
-		}
+		})
 	}
 }

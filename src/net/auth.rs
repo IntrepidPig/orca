@@ -1,25 +1,20 @@
-use std::io::Read;
 use std::collections::HashMap;
-use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::time::{Instant, Duration};
 use std::cell::{Cell, RefCell};
 use rand::{self, Rng};
 
 use hyper::{Request, Method};
-use hyper::header::{Authorization, Basic, Bearer, UserAgent};
-use json;
-use json::Value;
+use hyper::header::{Authorization, Basic};
 use open;
-use tiny_http::{Server, Request as TinyRequest, Response, StatusCode};
+use tiny_http::{Server, Response};
 use url;
 
-use errors::BadResponse;
 use net::Connection;
 
 use net::body_from_map;
 use net::error::AuthError;
-use failure::{Fail, Error, err_msg};
+use failure::Error;
 
 /// Contains data for authorization for each OAuth app type
 /// Currently only Script and InstalledApp are supported
@@ -78,13 +73,15 @@ impl OAuth {
 				params.insert("password", password);
 
 				// Request for the bearer token
-				let mut tokenreq = Request::new(Method::Post,"https://ssl.reddit.com/api/v1/access_token/.json".parse()?); // httpS is important
+				let mut tokenreq = Request::new(
+					Method::Post,
+					"https://ssl.reddit.com/api/v1/access_token/.json".parse()?,
+				); // httpS is important
 				tokenreq.set_body(body_from_map(&params));
-				tokenreq.headers_mut().set(Authorization(Basic{
+				tokenreq.headers_mut().set(Authorization(Basic {
 					username: id.clone(),
-					password: Some(secret.clone())
+					password: Some(secret.clone()),
 				}));
-				//tokenreq.headers_mut().set(conn.useragent.clone()); //TODO
 
 				// Send the request and get the bearer token as a response
 				let mut response = conn.run_request(tokenreq)?;
@@ -159,11 +156,14 @@ impl OAuth {
 					params.insert("redirect_uri", redirect);
 
 					// Request for the access token
-					let mut tokenreq = Request::new(Method::Post,"https://ssl.reddit.com/api/v1/access_token/.json".parse()?); // httpS is important
+					let mut tokenreq = Request::new(
+						Method::Post,
+						"https://ssl.reddit.com/api/v1/access_token/.json".parse()?,
+					); // httpS is important
 					tokenreq.set_body(body_from_map(&params));
-					tokenreq.headers_mut().set(Authorization(Basic{
+					tokenreq.headers_mut().set(Authorization(Basic {
 						username: id.clone(),
-						password: None
+						password: None,
 					}));
 
 					// Send the request and get the access token as a response

@@ -1,13 +1,10 @@
-#![allow(unused_imports)]
+#![feature(nll)]
 
 extern crate chrono;
 #[macro_use]
 extern crate failure_derive;
 extern crate failure;
 extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-#[macro_use]
 extern crate serde_json as json;
 extern crate open;
 extern crate tiny_http;
@@ -17,11 +14,9 @@ extern crate hyper;
 extern crate tokio_core;
 extern crate futures;
 extern crate hyper_tls;
+#[macro_use]
 extern crate log;
 
-
-use std::fmt;
-use std::fmt::Display;
 use std::collections::{HashMap, VecDeque};
 
 use json::Value;
@@ -38,14 +33,14 @@ pub mod data;
 
 /// Errors
 pub mod errors;
-use errors::{BadRequest, RedditError, BadResponse, NotFound};
+use errors::RedditError;
 
-use failure::{Fail, Error, err_msg};
+use failure::Error;
 use url::Url;
 
-use net::{Connection, body_from_map};
-use net::auth::{OAuth, OauthApp};
-use data::{Comment, Thread, Comments, Listing, Sort, SortTime, Thing};
+use net::{Connection, body_from_map, uri_params_from_map};
+use net::auth::OAuth;
+use data::{Comment, Comments, Listing, Sort, Thing};
 
 /// A reddit object
 /// ## Usage:
@@ -97,7 +92,9 @@ impl App {
 					sub
 				),
 				sort.param(),
-			)?.into_string().parse()? // TODO clean
+			)?
+				.into_string()
+				.parse()?, // TODO clean
 		);
 
 		self.conn.run_request(req)
@@ -118,7 +115,10 @@ impl App {
 		params.insert("text", text);
 		params.insert("sendreplies", if sendreplies { "true" } else { "false" });
 
-		let mut req = Request::new(Method::Post,"https://oauth.reddit.com/api/submit/.json".parse()?);
+		let mut req = Request::new(
+			Method::Post,
+			"https://oauth.reddit.com/api/submit/.json".parse()?,
+		);
 		req.set_body(body_from_map(&params));
 
 		self.conn.run_auth_request(req)
@@ -141,7 +141,8 @@ impl App {
 	pub fn get_user(&self, name: &str) -> Result<Value, Error> {
 		let req = Request::new(
 			Method::Get,
-			format!("https://www.reddit.com/user/{}/about/.json", name).parse()?,
+			format!("https://www.reddit.com/user/{}/about/.json", name)
+				.parse()?,
 		);
 
 		self.conn.run_request(req)
@@ -150,23 +151,48 @@ impl App {
 	/// Get a iterator of all comments in order of being posted
 	/// # Arguments
 	/// * `sub` - Name of the subreddit to pull comments from. Can be 'all' to pull from all of reddit
-	pub fn get_comments(&self, sub: &str) -> Comments {
+	pub fn create_comment_stream(&self, sub: &str) -> Comments {
 		Comments::new(self, sub)
+	}
+	
+	pub fn get_recent_comments(&self, sub: &str, limit: Option<i32>, before: Option<String>) -> Result<Listing<Comment>, Error> {
+		let limit_str;
+		let before_str;
+		let mut params: HashMap<&str, &str> = HashMap::new();
+		if let Some(limit) = limit {
+			limit_str = limit.to_string();
+			params.insert("limit", &limit_str);
+		}
+		if let Some(before) = before {
+			before_str = before;
+			params.insert("before", &before_str);
+		}
+		
+		let req = Request::new(Method::Get, uri_params_from_map(&format!("https://www.reddit.com/r/{}/comments.json", sub), &params)?);
+		
+		let resp = self.conn.run_request(req)?;
+		let comments = Listing::from_value(&resp["data"]["children"], "", self)?;
+		
+		Ok(comments)
 	}
 
 	/// Loads the comment tree of a post, returning a listing of the Comment enum, which can be
 	/// either Loaded or NotLoaded
 	/// # Arguments
 	/// * `post` - The name of the post to retrieve the tree from
-	pub fn get_comment_tree(&self, post: &str) -> Result<Listing<Thread>, Error> {
+	pub fn get_comment_tree(&self, post: &str) -> Result<Listing<Comment>, Error> {
 		// TODO add sorting and shit
-		let mut req = Request::new(Method::Get,format!("https://www.reddit.com/comments/{}/.json", post).parse()?);
-		
+		let mut req = Request::new(
+			Method::Get,
+			format!("https://www.reddit.com/comments/{}/.json", post)
+				.parse()?,
+		);
+
 		let mut params: HashMap<&str, &str> = HashMap::new();
 		params.insert("limit", "2147483648");
 		params.insert("depth", "2147483648");
 		req.set_body(body_from_map(&params));
-		
+
 
 		let data = self.conn.run_request(req)?;
 		let data = data[1]["data"]["children"].clone();
@@ -175,8 +201,16 @@ impl App {
 	}
 
 	/// Load more comments
-	pub fn more_children(&self, link_id: &str, comments: &[&str]) -> Result<Listing<Thread>, Error> {
-		let limit = 1000000000;
+	pub fn more_children(&self, link_id: &str, morechildren_id: &str, comments: &[&str]) -> Result<Listing<Comment>, Error> {
+		let mut string = String::from("t3_");
+		let link_id = if !link_id.starts_with("t3_") {
+			string.push_str(link_id);
+			&string
+		} else {
+			link_id
+		};
+		
+		let limit = 5;
 		// Break requests into chunks of `limit`
 		let mut chunks: Vec<String> = Vec::new();
 		let mut chunk_buf = String::new();
@@ -186,37 +220,51 @@ impl App {
 				chunks.push(chunk_buf);
 				chunk_buf = String::new();
 			}
-			
+
 			chunk_buf.push_str(&format!("{},", id));
 		}
 		chunk_buf.pop(); // Removes trailing comma on unfinished chunk
 		chunks.push(chunk_buf);
-		
-		println!("Chunks are {:?}", chunks);
-		
-		let mut children = VecDeque::new();
-		
+
+		trace!("Chunks are {:?}", chunks);
+
+		let mut lists = Vec::new();
+
 		for chunk in chunks {
 			let mut params: HashMap<&str, &str> = HashMap::new();
 			params.insert("children", &chunk);
 			params.insert("link_id", link_id);
+			params.insert("id", morechildren_id);
 			params.insert("api_type", "json");
-			
-			println!("Getting more children {} from {}", chunk, link_id);
-			
+
+			trace!("Getting more children {} from {}", chunk, link_id);
+
 			//let mut req = Request::new(Method::Get, Url::parse_with_params("https://www.reddit.com/api/morechildren/.json", params)?.into_string().parse()?);
-			let mut req = Request::new(Method::Post, "https://www.reddit.com/api/morechildren/.json".parse()?);
+			let mut req = Request::new(
+				Method::Post,
+				"https://www.reddit.com/api/morechildren/.json".parse()?,
+			);
 			req.set_body(body_from_map(&params));
 			let data = self.conn.run_request(req)?;
+
+			trace!("Scanning {}", data);
 			
-			println!("Scanning {}", data);
-			
-			for child in data["json"]["data"]["things"].as_array().unwrap() { // TODO don't unwrap
-				children.push_back(Thread::from_value(&child, self)?);
-			}
+			let list: Listing<Comment> = Listing::from_value(&data["json"]["data"]["things"], link_id, self)?;
+			lists.push(list);
 		}
 		
-		Ok(Listing { children, raw: json!({}) }) // TODO not raw but who really cares that field just adds stress
+		// Flatten the vec of listings
+		let mut final_list = VecDeque::new();
+		for list in &mut lists {
+			final_list.append(&mut list.children);
+		}
+		let mut listing: Listing<Comment> = Listing::new();
+		
+		for comment in final_list {
+			listing.insert_comment(comment);
+		}
+		
+		Ok(listing)
 	}
 
 	/// Comment on a thing
@@ -228,7 +276,10 @@ impl App {
 		params.insert("text", text);
 		params.insert("thing_id", thing);
 
-		let mut req = Request::new(Method::Post, "https://oauth.reddit.com/api/comment".parse()?);
+		let mut req = Request::new(
+			Method::Post,
+			"https://oauth.reddit.com/api/comment".parse()?,
+		);
 		req.set_body(body_from_map(&params));
 
 		self.conn.run_auth_request(req)?;
@@ -240,6 +291,7 @@ impl App {
 	/// * `sticky` - boolean value. True to set post as sticky, false to unset post as sticky
 	/// * `slot` - Optional slot number to fill (1 or 2)
 	/// * `id` - _fullname_ of the post to sticky
+	#[allow(unused_must_use)] // Is allowed because the request errors if the post is already sticky but that's ok
 	pub fn set_sticky(&self, sticky: bool, slot: Option<i32>, id: &str) -> Result<(), Error> {
 		let numstr;
 		let mut params: HashMap<&str, &str> = HashMap::new();
@@ -247,7 +299,10 @@ impl App {
 
 		if let Some(num) = slot {
 			if num != 1 && num != 2 {
-				return Err(Error::from(RedditError::BadRequest { request: format!("Sticky's are limited to slots 1 and 2"), response: "not sent".to_string() }));
+				return Err(Error::from(RedditError::BadRequest {
+					request: format!("Sticky's are limited to slots 1 and 2"),
+					response: "not sent".to_string(),
+				}));
 			}
 			numstr = num.to_string();
 			params.insert("num", &numstr);
@@ -255,11 +310,15 @@ impl App {
 
 		params.insert("id", id);
 
-		let mut req = Request::new(Method::Post,"https://oauth.reddit.com/api/set_subreddit_sticky/.json".parse()?);
+		let mut req = Request::new(
+			Method::Post,
+			"https://oauth.reddit.com/api/set_subreddit_sticky/.json"
+				.parse()?,
+		);
 		req.set_body(body_from_map(&params));
-
-		self.conn.run_auth_request(req)?;
-
+		
+		self.conn.run_auth_request(req);
+		
 		Ok(())
 	}
 
@@ -271,7 +330,11 @@ impl App {
 		let mut params: HashMap<&str, &str> = HashMap::new();
 		params.insert("names", fullname);
 
-		let req = Request::new(Method::Get, format!("https://www.reddit.com/by_id/{}/.json", fullname).parse()?);
+		let req = Request::new(
+			Method::Get,
+			format!("https://www.reddit.com/by_id/{}/.json", fullname)
+				.parse()?,
+		);
 		let response = self.conn.run_request(req)?;
 
 		T::from_value(&response, self)
@@ -283,9 +346,12 @@ impl App {
 		params.insert("subject", subject);
 		params.insert("text", body);
 
-		let mut req = Request::new(Method::Post, "https://oauth.reddit.com/api/compose/.json".parse()?);
+		let mut req = Request::new(
+			Method::Post,
+			"https://oauth.reddit.com/api/compose/.json".parse()?,
+		);
 		req.set_body(body_from_map(&params));
-		
+
 		match self.conn.run_auth_request(req) {
 			Ok(_) => Ok(()),
 			Err(e) => Err(e),

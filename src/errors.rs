@@ -1,14 +1,9 @@
-use failure::{Fail, Error, err_msg};
-use hyper::{Request, Response};
-
-use json::{to_string_pretty, Value, Error as JsonError};
-
 #[derive(Debug, Fail)]
 #[fail(display = "The requested resource could not be found")]
 pub struct NotFound {}
 
 #[derive(Debug, Fail)]
-#[fail(display = "Got an unexpected reponse:\n{}", response)]
+#[fail(display = "Got an unexpected reponse:\n{}\n", response)]
 pub struct BadResponse {
 	pub response: String,
 }
@@ -30,8 +25,8 @@ pub enum RedditError {
 }
 
 #[derive(Debug, Fail)]
-#[fail(display = "Could not parse json {} as {}", json, thing_type)]
+#[fail(display = "Could not parse json {} as {}\n", json, thing_type)]
 pub struct ParseError {
 	pub thing_type: String,
-	pub json: Value,
+	pub json: String,
 }

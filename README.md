@@ -28,21 +28,16 @@ If you've ever made a pull request on github before, you probably know more abou
 ```rust
 fn print_tree(listing: Listing<Comment>, level: i32) {
 	for comment in listing {
-		match comment {
-			Comment::Loaded(data) => {
-				for _ in 0..level {
-					print!("\t");
-				}
-				println!("Comment by {}", data.author);
-				print_tree(data.replies, level + 1);
-			},
-			_ => {},
+	    for _ in 0..level {
+		    print!("\t");
 		}
+		println!("Comment by {}", comment.author);
+		print_tree(comment.replies, level + 1);
 	}
 }
+
 print_tree(tree, 0);
 ```
-
 
 ### Example: Authorizing as Ouath Script type
 ```rust

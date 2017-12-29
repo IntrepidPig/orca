@@ -1,10 +1,23 @@
-extern crate fern;
+extern crate env_logger;
 
 use super::*;
+use std::sync::{Once, ONCE_INIT};
 use std::time::Duration;
 use std::thread;
 use net::LimitMethod;
-use data::Post;
+use data::*;
+use log;
+
+static ONCE: Once = ONCE_INIT;
+
+fn init_logging() {
+	ONCE.call_once(|| {
+		let mut builder = env_logger::LogBuilder::new();
+		builder.filter(Some("orca"), log::LogLevelFilter::Trace);
+		builder.target(env_logger::LogTarget::Stdout);
+		builder.init();
+	});
+}
 
 fn source_env() -> Result<(String, String, String, String, String, String), ()> {
 	use std::env;
@@ -33,6 +46,7 @@ fn source_env() -> Result<(String, String, String, String, String, String), ()> 
 }
 
 fn init_reddit() -> App {
+	init_logging();
 	let mut reddit = App::new("OrcaLibTest", "v0.2.0", "/u/IntrepidPig").unwrap();
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
 	reddit
@@ -56,6 +70,7 @@ fn get_posts() {
 
 #[test(installed_auth)]
 fn installed_app_auth() {
+	init_logging();
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
 	let mut reddit = App::new("Orca Test Installed App", "v0.2.0", "/u/IntrepidPig").unwrap();
 	reddit
@@ -70,6 +85,7 @@ fn installed_app_auth() {
 
 #[test(sort)]
 fn post_sort() {
+	init_logging();
 	assert_eq!(
 		Sort::Top(SortTime::All).param(),
 		&[("sort", "top"), ("t", "all")]
@@ -86,7 +102,7 @@ fn self_info() {
 	let reddit = init_reddit();
 
 	let user = reddit.get_self().unwrap();
-	println!("Me:\n{}", json::to_string_pretty(&user).unwrap());
+	info!("Me:\n{}", json::to_string_pretty(&user).unwrap());
 }
 
 #[test(otheruser)]
@@ -94,27 +110,22 @@ fn other_info() {
 	let reddit = init_reddit();
 
 	let otherguy = reddit.get_user("DO_U_EVN_SPAGHETTI").unwrap();
-	println!(
+	info!(
 		"That one guy:\n{}",
 		json::to_string_pretty(&otherguy).unwrap()
 	);
 }
 
-//#[test(stream)]
+#[test(stream)]
 fn comment_stream() {
 	let reddit = init_reddit();
-	let comments = reddit.get_comments("all");
+	let comments = reddit.create_comment_stream("all");
 
 	let mut count = 0;
 
 	for comment in comments {
 		count += 1;
-		match comment {
-			Thread::Comment(data) => {
-				println!("Got comment #{} by {}", count, data.author);
-			}
-			_ => panic!("This was not supposed to happen"),
-		}
+		trace!("Got comment #{} by {}", count, comment.author);
 
 		if count > 500 {
 			break;
@@ -127,30 +138,20 @@ fn comment_tree() {
 	let reddit = init_reddit();
 	let tree = reddit.get_comment_tree("7le01h").unwrap();
 
-	fn print_tree(listing: Listing<Thread>, level: i32) {
+	fn print_tree(listing: Listing<Comment>, level: i32) {
 		for comment in listing {
-			match comment {
-				Thread::Comment(data) => {
-					for _ in 0..level {
-						print!("\t");
-					}
-					println!("Comment by {}", data.author);
-					print_tree(data.replies, level + 1);
-				}
-				Thread::More(ids) => {
-					for _ in 0..level {
-						print!("\t");
-					}
-					println!("Comment id: {:?}", ids);
-				}
+			for _ in 0..level {
+				print!("\t");
 			}
+			println!("{} by {} (parent: {})", comment.id, comment.author, comment.parent_id);
+			print_tree(comment.replies, level + 1);
 		}
 	};
 
 	print_tree(tree, 0);
 }
 
-//#[test(Stress)]
+#[test(Stress)]
 fn stress_test() {
 	let requests = 60;
 
@@ -164,19 +165,19 @@ fn stress_test() {
 	let start = Instant::now();
 	for userstuff in 0..requests {
 		let t1 = Instant::now();
-		reddit.get_self();
+		reddit.get_self().unwrap();
 		times.push(Instant::now() - t1);
 	}
 	let total = Instant::now() - start;
 
-	println!("Total time for {} requests: {:?}", requests, total);
+	info!("Total time for {} requests: {:?}", requests, total);
 
 	let mut sum = Duration::new(0, 0);
 	for i in times.iter() {
 		sum += i.clone();
 	}
 
-	println!("Average wait time: {:?}", sum / requests);
+	info!("Average wait time: {:?}", sum / requests);
 }
 
 #[test(Sticky)]
@@ -184,12 +185,10 @@ fn sticky() {
 	let reddit = init_reddit();
 
 	reddit.set_sticky(true, Some(2), "t3_6u65br").unwrap();
-	println!("Set sticky, unsetting in 10 seconds");
 	thread::sleep(Duration::new(5, 0));
 
 	thread::sleep(Duration::new(10, 0));
 	reddit.set_sticky(false, Some(2), "t3_6u65br").unwrap();
-	println!("Unset sticky");
 }
 
 #[test(load_thing)]
@@ -197,7 +196,7 @@ fn load_thing() {
 	let reddit = init_reddit();
 
 	let post: Post = reddit.load_thing("t3_7am0zo").unwrap();
-	println!("Got post: {:?}", post);
+	info!("Got post: {:?}", post);
 }
 
 #[test(message)]
@@ -209,8 +208,7 @@ fn message() {
 		.unwrap();
 }
 
-//#[test(submit)]
-/*
+#[test(submit)]
 fn test_post() {
-	println!("{}", init_reddit().submit_self("pigasusland".to_string(), "Test Post".to_string(), "The time is dank-o-clock".to_string(), true).unwrap());
-}*/
+	println!("{}", init_reddit().submit_self("pigasusland", "Test Post", "The time is dank-o-clock", true).unwrap());
+}

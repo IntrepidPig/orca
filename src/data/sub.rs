@@ -1,20 +1,11 @@
-use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::thread;
-use std::time::Duration;
 
-use json;
-use json::Value;
-use hyper::{Request, Method};
-use url::Url;
-
-use net::Connection;
-use data::{Comment, Thread, Listing, Thing};
+use data::Comment;
 use App;
 
 pub struct Comments<'a> {
 	sub: String,
-	cache: VecDeque<Thread>,
+	cache: VecDeque<Comment>,
 	last: Option<String>,
 	app: &'a App,
 }
@@ -22,7 +13,7 @@ pub struct Comments<'a> {
 impl<'a> Comments<'a> {
 	// TODO fix all the unwraps
 	pub fn new(app: &'a App, sub: &str) -> Comments<'a> {
-		let cache: VecDeque<Thread> = VecDeque::new();
+		let cache: VecDeque<Comment> = VecDeque::new();
 		let last = None;
 
 		Comments {
@@ -34,44 +25,28 @@ impl<'a> Comments<'a> {
 	}
 
 	fn refresh(&mut self, app: &App) {
-		let mut params: HashMap<String, String> = HashMap::new();
-		if let Some(last) = self.last.clone() {
-			params.insert("before".to_string(), last);
-			params.insert("limit".to_string(), "500".to_string());
-		}
-
-		let mut resp = app.get_comments(&self.sub);
+		let mut resp = app.get_recent_comments(&self.sub, Some(500), self.last.clone())
+				.expect("Could not get recent comments");
 
 		match resp.by_ref().peekable().peek() {
-			Some(thread) => {
-				match *thread {
-					Thread::Comment(ref comment) => {
-						self.last = Some(comment.id.clone());
-					},
-					Thread::More(ref ids) => {
-						self.last = Some(ids[0].clone());
-					}
-				}
-			},
+			Some(comment) => {
+				self.last = Some(comment.id.clone());
+			}
 			None => {}
 		}
-		
-		self.cache.append(&mut resp.cache);
+
+		self.cache.append(&mut resp.children);
 	}
 }
 
 impl<'a> Iterator for Comments<'a> {
-	type Item = Thread;
+	type Item = Comment;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some(val) = self.cache.pop_front() {
-			Some(val)
-		} else {
-			while self.cache.is_empty() {
-				self.refresh(self.app);
-			}
-			self.cache.pop_front()
+		while self.cache.is_empty() {
+			self.refresh(self.app);
 		}
+		self.cache.pop_front()
 	}
 }
 

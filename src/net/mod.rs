@@ -3,8 +3,6 @@ pub mod auth;
 /// Reddit errors
 pub mod error;
 
-use std::mem;
-use std::io::Read;
 use std::time::{Duration, Instant};
 use std::thread;
 use std::cell::{Cell, RefCell};
@@ -13,17 +11,16 @@ use std::collections::HashMap;
 use json;
 use json::Value;
 use hyper::client::{Client, HttpConnector};
-use hyper::{Body, Request, Response};
+use hyper::{Body, Request, Response, Uri};
 use hyper_tls::HttpsConnector;
-use hyper::header::{Authorization, Bearer, UserAgent, Basic};
+use hyper::header::UserAgent;
 use tokio_core::reactor::Core;
-use futures::{Future, Stream};
+use futures::Stream;
 
-use errors::{BadRequest, RedditError};
-use errors::*;
-use self::auth::{OAuth, OauthApp};
+use errors::RedditError;
+use self::auth::OAuth;
 
-use failure::{Fail, Error, err_msg};
+use failure::Error;
 
 #[derive(Copy, Clone)]
 pub enum LimitMethod {
@@ -62,8 +59,8 @@ impl Connection {
 		let core = Core::new()?;
 		let handle = core.handle();
 		let client = Client::configure()
-				.connector(HttpsConnector::new(1, &handle)?)
-				.build(&handle);
+			.connector(HttpsConnector::new(1, &handle)?)
+			.build(&handle);
 		Ok(Connection {
 			auth: None,
 			useragent,
@@ -106,9 +103,14 @@ impl Connection {
 				}
 			}
 		};
-
-
+		
+		// Set useragent
 		req.headers_mut().set(self.useragent.clone());
+		
+		// Log the request
+		info!("Sending request {:?}", req);
+		
+		
 		// Execute the request!
 		let response = self.client.request(req);
 		let response = self.core.borrow_mut().run(response)?;
@@ -139,22 +141,36 @@ impl Connection {
 			);
 		}
 		
+		let response_str = format!("{:?}", response);
 		let get_body = |response: Response| -> Result<String, Error> {
 			let body = self.core.borrow_mut().run(response.body().concat2())?;
 			let body: String = String::from_utf8_lossy(&body).into();
 			Ok(body)
 		};
-		
+
 		if !response.status().is_success() {
-			let response_str = format!("{:?}", response);
-			return Err(Error::from(RedditError::BadRequest { request: req_str, response: format!("Reponse: {:?}\nResponse body: {:?}", response_str, get_body(response)) }));
+			error!("Got error response: {}", response_str);
+			return Err(Error::from(RedditError::BadRequest {
+				request: req_str,
+				response: format!(
+					"Reponse: {}\nResponse body: {:?}",
+					response_str,
+					get_body(response)?
+				),
+			}));
 		}
-		
+
 		let body = get_body(response)?;
-		
+
 		match json::from_str(&body) {
-			Ok(r) => Ok(r),
-			Err(_) => Err(Error::from(RedditError::BadResponse { request: req_str, response: body })),
+			Ok(r) => {
+				info!("Got successful response: {:?}\nBody: {}", response_str, body);
+				Ok(r)
+			},
+			Err(_) => Err(Error::from(RedditError::BadResponse {
+				request: req_str,
+				response: body,
+			})),
 		}
 	}
 
@@ -194,7 +210,9 @@ impl Connection {
 
 							} else if let Some(expire_instant) = expire_instant.get() {
 								if Instant::now() > expire_instant {
-									return Err(Error::from(RedditError::Forbidden { request: format!("{:?}", req_str) }));
+									return Err(Error::from(
+										RedditError::Forbidden { request: format!("{:?}", req_str) },
+									));
 								} else {
 									token.borrow().to_string()
 								}
@@ -207,7 +225,9 @@ impl Connection {
 			);
 			self.run_request(req)
 		} else {
-			Err(Error::from(RedditError::Forbidden { request: format!("{:?}", req) }))
+			Err(Error::from(
+				RedditError::Forbidden { request: format!("{:?}", req) },
+			))
 		}
 	}
 
@@ -218,11 +238,25 @@ impl Connection {
 
 pub fn body_from_map(map: &HashMap<&str, &str>) -> Body {
 	let mut body_str = String::new();
-	
+
 	for (i, item) in map.iter().enumerate() {
 		// Push the paramater to the body with an & at the end unless it's the last parameter
-		body_str.push_str(&format!("{}={}{}", item.0, item.1, if i < map.len() - 1{ "&" } else { "" }));
+		body_str.push_str(&format!(
+			"{}={}{}",
+			item.0,
+			item.1,
+			if i < map.len() - 1 { "&" } else { "" }
+		));
 	}
 	
+	trace!("Setup body: \n{}\n", body_str);
+
 	Body::from(body_str)
+}
+
+/// Creates a url with encoded parameters from hashmap. Right now it's kinda hacky
+pub fn uri_params_from_map(url: &str, map: &HashMap<&str, &str>) -> Result<Uri, Error> {
+	use url::Url;
+	
+	Ok(Url::parse_with_params(url, map)?.to_string().parse()?)
 }
