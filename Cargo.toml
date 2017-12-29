@@ -22,7 +22,7 @@ rand = "0.3"
 hyper = "0.11"
 futures = "0.1"
 tokio-core = "0.1"
-hyper-tls = "*"
+hyper-tls = "0.1"
 log = "0.3"
 
 [dev-dependencies]
