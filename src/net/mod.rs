@@ -98,6 +98,7 @@ impl Connection {
 				if let Some(remaining) = self.remaining.get() {
 					// If the reset time is in the future
 					if Instant::now() < self.reset_time.get() {
+						trace!("Ratelimiting in steady mode for {:?}", self.reset_time.get() - Instant::now());
 						// Sleep for the amount of time until reset divided by how many requests we have for steady sending
 						thread::sleep(
 							(self.reset_time.get() - Instant::now())
@@ -113,7 +114,8 @@ impl Connection {
 				if let Some(remaining) = self.remaining.get() {
 					// If we have none remaining and we haven't passed the request limit, sleep till we do
 					if remaining <= 0 && self.reset_time.get() > Instant::now() {
-						thread::sleep(Instant::now() - self.reset_time.get());
+						trace!("Ratelimiting in burst mode for {:?}", self.reset_time.get() - Instant::now());
+						thread::sleep(self.reset_time.get() - Instant::now());
 					}
 				}
 			}
@@ -123,7 +125,7 @@ impl Connection {
 		req.headers_mut().set(self.useragent.clone());
 		
 		// Log the request
-		info!("Sending request {:?}", req);
+		trace!("Sending request {:?}", req);
 		
 		
 		// Execute the request!
@@ -136,6 +138,7 @@ impl Connection {
 				.parse::<f32>()
 				.unwrap()
 				.round() as i32;
+			trace!("Used {} of requests in ratelimit period", reqs_used);
 			self.reqs.set(reqs_used);
 		}
 		if let Some(reqs_remaining) = response.headers().get_raw("x-ratelimit-remaining") {
@@ -143,6 +146,7 @@ impl Connection {
 				.parse::<f32>()
 				.unwrap()
 				.round() as i32;
+			trace!("Have {} requests remaining in ratelimit period", reqs_remaining);
 			self.remaining.set(Some(reqs_remaining));
 		}
 		if let Some(secs_remaining) = response.headers().get_raw("x-ratelimit-reset") {
@@ -150,6 +154,7 @@ impl Connection {
 				.parse::<f32>()
 				.unwrap()
 				.round() as u64;
+			trace!("Have {} seconds remaining to ratelimit reset", secs_remaining);
 			self.reset_time.set(
 				Instant::now() +
 					Duration::new(secs_remaining, 0),
@@ -179,7 +184,7 @@ impl Connection {
 
 		match json::from_str(&body) {
 			Ok(r) => {
-				info!("Got successful response: {:?}\nBody: {}", response_str, body);
+				trace!("Got successful response: {:?}\nBody: {}", response_str, body);
 				Ok(r)
 			},
 			Err(_) => Err(Error::from(RedditError::BadResponse {
