@@ -61,7 +61,7 @@ impl Thing for Comment {
 				return Err(Error::from(ParseError { thing_type: "Thread".to_string(), json: json::to_string_pretty($val).unwrap() }));
 			};
 		}
-		
+
 		let val = &val["data"];
 		let edited = match val["edited"] {
 			Value::Bool(_) => None,
@@ -132,7 +132,7 @@ impl Thing for Comment {
 			}
 		};
 
-	Ok(Comment {
+		Ok(Comment {
 			edited,
 			id,
 			parent_id,

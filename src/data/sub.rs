@@ -33,7 +33,7 @@ impl<'a> Comments<'a> {
 
 	fn refresh(&mut self, app: &App) {
 		let mut resp = app.get_recent_comments(&self.sub, Some(500), self.last.clone())
-				.expect("Could not get recent comments");
+			.expect("Could not get recent comments");
 
 		match resp.by_ref().peekable().peek() {
 			Some(comment) => {

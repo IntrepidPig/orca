@@ -5,13 +5,13 @@ pub enum RedditError {
 	#[fail(display = "Requested resource {} was not found", request)]
 	NotFound {
 		/// The requested resource
-		request: String
+		request: String,
 	},
 	/// The requested resource is forbidden
 	#[fail(display = "Requested resource {} is forbidden", request)]
 	Forbidden {
 		/// The requested resource
-		request: String
+		request: String,
 	},
 	/// Recieved a response that was unexpected
 	#[fail(display = "\nSent request {}, got unexpected reponse {}\n", request, response)]
@@ -19,7 +19,7 @@ pub enum RedditError {
 		/// The request that was sent
 		request: String,
 		/// The response that was recieved
-		response: String
+		response: String,
 	},
 	/// A request was sent that was incorrect
 	#[fail(display = "\nAttempted incorrect request {} got response {}\n", request, response)]
@@ -27,11 +27,11 @@ pub enum RedditError {
 		/// The request that was sent
 		request: String,
 		/// The response that was recieved
-		response: String
+		response: String,
 	},
 	/// Authorization failed
 	#[fail(display = "Failed to authorize")]
-	AuthError
+	AuthError,
 }
 
 /// An error representing a json value that could not be parsed as a certain struct

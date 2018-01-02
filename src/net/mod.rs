@@ -91,6 +91,7 @@ impl Connection {
 	/// user agent.
 	pub fn run_request(&self, mut req: Request) -> Result<Value, Error> {
 		let req_str = format!("{:?}", req);
+
 		// Ratelimit based on method chosen type
 		match self.limit.get() {
 			LimitMethod::Steady => {
@@ -98,7 +99,10 @@ impl Connection {
 				if let Some(remaining) = self.remaining.get() {
 					// If the reset time is in the future
 					if Instant::now() < self.reset_time.get() {
-						trace!("Ratelimiting in steady mode for {:?}", self.reset_time.get() - Instant::now());
+						trace!(
+							"Ratelimiting in steady mode for {:?}",
+							self.reset_time.get() - Instant::now()
+						);
 						// Sleep for the amount of time until reset divided by how many requests we have for steady sending
 						thread::sleep(
 							(self.reset_time.get() - Instant::now())
@@ -114,20 +118,23 @@ impl Connection {
 				if let Some(remaining) = self.remaining.get() {
 					// If we have none remaining and we haven't passed the request limit, sleep till we do
 					if remaining <= 0 && self.reset_time.get() > Instant::now() {
-						trace!("Ratelimiting in burst mode for {:?}", self.reset_time.get() - Instant::now());
+						trace!(
+							"Ratelimiting in burst mode for {:?}",
+							self.reset_time.get() - Instant::now()
+						);
 						thread::sleep(self.reset_time.get() - Instant::now());
 					}
 				}
 			}
 		};
-		
+
 		// Set useragent
 		req.headers_mut().set(self.useragent.clone());
-		
+
 		// Log the request
 		trace!("Sending request {:?}", req);
-		
-		
+
+
 		// Execute the request!
 		let response = self.client.request(req);
 		let response = self.core.borrow_mut().run(response)?;
@@ -146,7 +153,10 @@ impl Connection {
 				.parse::<f32>()
 				.unwrap()
 				.round() as i32;
-			trace!("Have {} requests remaining in ratelimit period", reqs_remaining);
+			trace!(
+				"Have {} requests remaining in ratelimit period",
+				reqs_remaining
+			);
 			self.remaining.set(Some(reqs_remaining));
 		}
 		if let Some(secs_remaining) = response.headers().get_raw("x-ratelimit-reset") {
@@ -154,13 +164,23 @@ impl Connection {
 				.parse::<f32>()
 				.unwrap()
 				.round() as u64;
-			trace!("Have {} seconds remaining to ratelimit reset", secs_remaining);
+			trace!(
+				"Have {} seconds remaining to ratelimit reset",
+				secs_remaining
+			);
 			self.reset_time.set(
 				Instant::now() +
 					Duration::new(secs_remaining, 0),
 			);
 		}
-		
+		trace!(
+			"Ratelimiting:\n\tRequests used: {:?}\n\tRequests remaining: {:?}\n\tReset time: {:?}\n\tNow: {:?}",
+			self.reqs.get(),
+			self.remaining.get(),
+			self.reset_time.get(),
+			Instant::now()
+		);
+
 		let response_str = format!("{:?}", response);
 		let get_body = |response: Response| -> Result<String, Error> {
 			let body = self.core.borrow_mut().run(response.body().concat2())?;
@@ -184,9 +204,13 @@ impl Connection {
 
 		match json::from_str(&body) {
 			Ok(r) => {
-				trace!("Got successful response: {:?}\nBody: {}", response_str, body);
+				trace!(
+					"Got successful response: {:?}\nBody: {}",
+					response_str,
+					body
+				);
 				Ok(r)
-			},
+			}
 			Err(_) => Err(Error::from(RedditError::BadResponse {
 				request: req_str,
 				response: body,
@@ -270,7 +294,7 @@ pub fn body_from_map(map: &HashMap<&str, &str>) -> Body {
 			if i < map.len() - 1 { "&" } else { "" }
 		));
 	}
-	
+
 	trace!("Setup body: \n{}\n", body_str);
 
 	Body::from(body_str)
@@ -279,6 +303,6 @@ pub fn body_from_map(map: &HashMap<&str, &str>) -> Body {
 /// Creates a url with encoded parameters from hashmap. Right now it's kinda hacky
 pub fn uri_params_from_map(url: &str, map: &HashMap<&str, &str>) -> Result<Uri, Error> {
 	use url::Url;
-	
+
 	Ok(Url::parse_with_params(url, map)?.to_string().parse()?)
 }

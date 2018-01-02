@@ -38,7 +38,7 @@
 //! mutable reddit instance):
 //!
 //! ```rust
-//! reddit.authorize(OauthApp::Script {
+//! reddit.authorize(OAuthApp::Script {
 //!     id,
 //!     secret,
 //!     username,
@@ -132,7 +132,7 @@ impl App {
 	/// # Returns
 	/// A result containing either an Auth object or a certain error
 	/// To use place it in the auth field of a connection struct
-	pub fn authorize(&mut self, oauth: &net::auth::OauthApp) -> Result<(), Error> {
+	pub fn authorize(&mut self, oauth: &net::auth::OAuthApp) -> Result<(), Error> {
 		self.conn.auth = Some(OAuth::new(&self.conn, oauth)?);
 		Ok(())
 	}
@@ -199,7 +199,7 @@ impl App {
 
 		self.conn.run_auth_request(req)
 	}
-	
+
 	/// Gets information about a user that is not currently authorized
 	/// # Arguments
 	/// * `name` - username of the user to query
@@ -221,7 +221,7 @@ impl App {
 	pub fn create_comment_stream(&self, sub: &str) -> Comments {
 		Comments::new(self, sub)
 	}
-	
+
 	/// Gets the most recent comments in a subreddit. This function is also usually called intenally but
 	/// can be called if a one time retrieval of recent comments from a subreddit is necessary
 	/// # Arguments
@@ -242,12 +242,18 @@ impl App {
 			before_str = before;
 			params.insert("before", &before_str);
 		}
-		
-		let req = Request::new(Method::Get, uri_params_from_map(&format!("https://www.reddit.com/r/{}/comments.json", sub), &params)?);
-		
+
+		let req = Request::new(
+			Method::Get,
+			uri_params_from_map(
+				&format!("https://www.reddit.com/r/{}/comments.json", sub),
+				&params,
+			)?,
+		);
+
 		let resp = self.conn.run_request(req)?;
 		let comments = Listing::from_value(&resp["data"]["children"], "", self)?;
-		
+
 		Ok(comments)
 	}
 
@@ -291,7 +297,7 @@ impl App {
 		} else {
 			link_id
 		};
-		
+
 		let limit = 5;
 		// Break requests into chunks of `limit`
 		let mut chunks: Vec<String> = Vec::new();
@@ -330,22 +336,22 @@ impl App {
 			let data = self.conn.run_request(req)?;
 
 			trace!("Scanning {}", data);
-			
+
 			let list: Listing<Comment> = Listing::from_value(&data["json"]["data"]["things"], link_id, self)?;
 			lists.push(list);
 		}
-		
+
 		// Flatten the vec of listings
 		let mut final_list = VecDeque::new();
 		for list in &mut lists {
 			final_list.append(&mut list.children);
 		}
 		let mut listing: Listing<Comment> = Listing::new();
-		
+
 		for comment in final_list {
 			listing.insert_comment(comment);
 		}
-		
+
 		Ok(listing)
 	}
 
@@ -398,9 +404,9 @@ impl App {
 				.parse()?,
 		);
 		req.set_body(body_from_map(&params));
-		
+
 		self.conn.run_auth_request(req);
-		
+
 		Ok(())
 	}
 

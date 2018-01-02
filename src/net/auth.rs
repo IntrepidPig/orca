@@ -19,7 +19,7 @@
 //! properties there should be a field called "secret" with another long string of characters. That
 //! is your app's secret.
 //!
-//! Once you have the id and secret, you can instantiate an `OauthApp::Script` enum with the id and
+//! Once you have the id and secret, you can instantiate an `OAuthApp::Script` enum with the id and
 //! secret of the script and the username and password of the user that registered the app, and
 //! pass it into the `authorize` function of an `App` instance.
 //!
@@ -45,7 +45,7 @@
 //! `http://127.0.0.1:7878` (hopefully this will be customizable in the future).
 //!
 //! When you create this app, the id of the app will be shorly below the name in the box that comes
-//! upp. Now in you application code, create an `OauthApp::InstalledApp` with the id of you app and
+//! upp. Now in you application code, create an `OAuthApp::InstalledApp` with the id of you app and
 //! the redirect uri exactly as you entered it when you registered the app. When you call the
 //! `authorize` function with this as a parameter, it will open a web browser with either a reddit
 //! login prompt, or if you are already logged in, a request for permission for your app. Once you
@@ -77,7 +77,7 @@ use net::body_from_map;
 /// Contains data for authorization for each OAuth app type
 /// Currently only Script and InstalledApp are supported
 #[derive(Debug, Clone)]
-pub enum OauthApp {
+pub enum OAuthApp {
 	/// Not Implemented
 	WebApp,
 	/// Where args are (app id, redirect uri)
@@ -85,7 +85,11 @@ pub enum OauthApp {
 		/// Id of the app
 		id: String,
 		/// Redirect url of the installed app
-		redirect: String
+		redirect: String,
+		/// The response to give when authorization succeeds (set to none for the default)
+		success_response: Option<String>,
+		/// The response to gve when authorization fails (set to none for the default)
+		error_response: Option<String>,
 	},
 	/// Where args are (app id, app secret, username, password)
 	Script {
@@ -138,13 +142,13 @@ impl OAuth {
 		unimplemented!();
 	}
 
-	/// Authorize the app based on input from `OauthApp` struct.
+	/// Authorize the app based on input from `OAuthApp` struct.
 	/// # Arguments
 	/// * `conn` - Connection to authorize with
-	/// * `app` - OAuth information to use (`OauthApp`)
-	pub fn new(conn: &Connection, app: &OauthApp) -> Result<OAuth, Error> {
+	/// * `app` - OAuth information to use (`OAuthApp`)
+	pub fn new(conn: &Connection, app: &OAuthApp) -> Result<OAuth, Error> {
 		// TODO: get rid of unwraps and expects
-		use self::OauthApp::*;
+		use self::OAuthApp::*;
 		match *app {
 			Script {
 				ref id,
@@ -188,12 +192,26 @@ impl OAuth {
 			InstalledApp {
 				ref id,
 				ref redirect,
+				ref success_response,
+				ref error_response,
 			} => {
 				// Random state string to identify this authorization instance
 				let state = &rand::thread_rng()
 					.gen_ascii_chars()
 					.take(16)
 					.collect::<String>();
+
+				// Set the responses
+				let success_response = if let Some(ref r) = *success_response {
+					r.clone()
+				} else {
+					"Authorization succeeded!".to_string()
+				};
+				let error_response = if let Some(ref r) = *error_response {
+					r.clone()
+				} else {
+					"Authorization failed".to_string()
+				};
 
 				// Permissions (scopes) to authorize, should be customizable in the future
 				let scopes = "identity,edit,flair,history,modconfig,modflair,modlog,modposts,\
@@ -228,11 +246,10 @@ impl OAuth {
 					}
 					map
 				};
-				req.respond(Response::from_string("Authorization successful"))
-					.unwrap(); // TODO make this customizable
 
 				if let (Some(new_state), Some(code)) = (params.get("state"), params.get("code")) {
 					if new_state != state {
+						req.respond(Response::from_string(error_response))?;
 						return Err(Error::from(RedditError::AuthError));
 					}
 
@@ -263,6 +280,7 @@ impl OAuth {
 							response.get("scope"),
 						)
 					{
+						req.respond(Response::from_string(success_response))?;
 						Ok(OAuth::InstalledApp {
 							id: id.to_string(),
 							redirect: redirect.to_string(),
@@ -277,9 +295,11 @@ impl OAuth {
 							)),
 						})
 					} else {
+						req.respond(Response::from_string(error_response))?;
 						Err(Error::from(RedditError::AuthError))
 					}
 				} else {
+					req.respond(Response::from_string(error_response))?;
 					Err(Error::from(RedditError::AuthError))
 				}
 			}
