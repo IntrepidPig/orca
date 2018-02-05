@@ -335,31 +335,33 @@ impl NewService for NewInstalledAppService {
 	type Instance = InstalledAppService;
 	
 	fn new_service(&self) -> Result<Self::Instance, std::io::Error> {
-		if let Some(sender) = self.sender.pop() {
-			// If a success response was given clone it for the InstalledAppService
-			let s_resp = if let Some(ref resp) = self.s_resp {
-				Some(RefCell::new(Some(clone_ref_response(&resp, self.core.borrow_mut().deref_mut()))))
-			} else {
-				None
-			};
-			
-			// If an error response was given clone it for the InstalledAppService
-			let e_resp = if let Some(ref resp) = self.e_resp {
-				Some(RefCell::new(Some(clone_ref_response(&resp, self.core.borrow_mut().deref_mut()))))
-			} else {
-				None
-			};
-			
-			Ok(InstalledAppService {
-				code_sender: RefCell::new(Some(sender)),
-				state: self.state.clone(),
-				s_resp,
-				e_resp,
-				core: Arc::clone(&self.core)
-			})
+		let code_sender = if let Some(sender) = self.sender.pop() {
+			RefCell::new(Some(sender))
 		} else {
-			Err(std::io::Error::from_raw_os_error(4)) // Awful hack because I don't know what error I should return
-		}
+			RefCell::new(None)
+		};
+		
+		// If a success response was given clone it for the InstalledAppService
+		let s_resp = if let Some(ref resp) = self.s_resp {
+			Some(RefCell::new(Some(clone_ref_response(&resp, self.core.borrow_mut().deref_mut()))))
+		} else {
+			None
+		};
+		
+		// If an error response was given clone it for the InstalledAppService
+		let e_resp = if let Some(ref resp) = self.e_resp {
+			Some(RefCell::new(Some(clone_ref_response(&resp, self.core.borrow_mut().deref_mut()))))
+		} else {
+			None
+		};
+		
+		Ok(InstalledAppService {
+			code_sender,
+			state: self.state.clone(),
+			s_resp,
+			e_resp,
+			core: Arc::clone(&self.core)
+		})
 	}
 }
 
