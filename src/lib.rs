@@ -18,7 +18,7 @@
 //!
 //! ## Structure
 //! All of the functionality necessary is available in the implementation of
-//! the `App` struct. Data structures are defined in orca::data. Networking code is present in
+//! the `App` struct. Data structures are defined in `orca::data`. Networking code is present in
 //! the net module, which also contains OAuth authorization functionality.
 //!
 //! ## Usage
@@ -279,7 +279,7 @@ impl App {
 		let data = self.conn.run_request(req)?;
 		let data = data[1]["data"]["children"].clone();
 
-		Listing::from_value(&data, post, &self)
+		Listing::from_value(&data, post, self)
 	}
 
 	/// Load more comments from a comment tree that is not completely loaded. This function at the moment can only be called
@@ -387,7 +387,7 @@ impl App {
 		if let Some(num) = slot {
 			if num != 1 && num != 2 {
 				return Err(Error::from(RedditError::BadRequest {
-					request: format!("Sticky's are limited to slots 1 and 2"),
+					request: "Sticky's are limited to slots 1 and 2".to_string(),
 					response: "not sent".to_string(),
 				}));
 			}

@@ -35,11 +35,8 @@ impl<'a> Comments<'a> {
 		let mut resp = app.get_recent_comments(&self.sub, Some(500), self.last.clone())
 			.expect("Could not get recent comments");
 
-		match resp.by_ref().peekable().peek() {
-			Some(comment) => {
-				self.last = Some(comment.id.clone());
-			}
-			None => {}
+		if let Some(comment) = resp.by_ref().peekable().peek() {
+			self.last = Some(comment.id.clone());
 		}
 
 		self.cache.append(&mut resp.children);

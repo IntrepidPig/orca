@@ -1,3 +1,4 @@
+use std::default::Default;
 use std::collections::VecDeque;
 
 use json;
@@ -23,6 +24,12 @@ impl<T> Listing<T> {
 	}
 }
 
+impl<T> Default for Listing<T> {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl<T> Iterator for Listing<T> {
 	type Item = T;
 
@@ -36,7 +43,7 @@ impl Listing<Comment> {
 	pub fn traverse(self) -> Vec<Comment> {
 		let mut comments = Vec::new();
 
-		for comment in self.children.into_iter() {
+		for comment in self.children {
 			comments.push(comment.clone());
 			{
 				comments.append(&mut comment.replies.traverse());
@@ -46,7 +53,7 @@ impl Listing<Comment> {
 		comments
 	}
 
-	fn insert_comment_recursive(&mut self, comment: Comment) -> bool {
+	fn insert_comment_recursive(&mut self, comment: &Comment) -> bool {
 		// For each comment in this listing
 		for c in &mut self.children {
 			// Check if it's the parent of the comment to be inserted, and if so, insert the comment into the parent's replies
@@ -54,7 +61,7 @@ impl Listing<Comment> {
 				c.replies.children.push_back(comment.clone());
 				return true;
 			// If not, try to insert it into the replies of the current comment (recursive)
-			} else if c.replies.insert_comment_recursive(comment.clone()) {
+			} else if c.replies.insert_comment_recursive(comment) {
 				return true;
 			}
 		}
@@ -65,7 +72,7 @@ impl Listing<Comment> {
 
 	/// Inserts a comment into a listing in it's correct place in the tree.
 	pub fn insert_comment(&mut self, comment: Comment) {
-		if !self.insert_comment_recursive(comment.clone()) {
+		if !self.insert_comment_recursive(&comment) {
 			self.children.push_back(comment);
 		}
 	}

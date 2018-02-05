@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use std::thread;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::hash::BuildHasher;
 
 use json;
 use json::Value;
@@ -248,7 +249,7 @@ impl Connection {
 							if let (Some(_refresh_token), Some(expire_instant)) = (refresh_token.borrow().clone(), expire_instant.get()) {
 								// If the token's expired, refresh it
 								if Instant::now() > expire_instant {
-									auth.refresh(&self);
+									auth.refresh(self);
 								}
 								token.borrow().to_string()
 
@@ -282,7 +283,7 @@ impl Connection {
 }
 
 /// Creates a HTTP/hyper Body from a hashmap, in urlencoded form.
-pub fn body_from_map(map: &HashMap<&str, &str>) -> Body {
+pub fn body_from_map<S: BuildHasher>(map: &HashMap<&str, &str, S>) -> Body {
 	let mut body_str = String::new();
 
 	for (i, item) in map.iter().enumerate() {
@@ -301,7 +302,7 @@ pub fn body_from_map(map: &HashMap<&str, &str>) -> Body {
 }
 
 /// Creates a url with encoded parameters from hashmap. Right now it's kinda hacky
-pub fn uri_params_from_map(url: &str, map: &HashMap<&str, &str>) -> Result<Uri, Error> {
+pub fn uri_params_from_map<S: BuildHasher>(url: &str, map: &HashMap<&str, &str, S>) -> Result<Uri, Error> {
 	use url::Url;
 
 	Ok(Url::parse_with_params(url, map)?.to_string().parse()?)

@@ -7,12 +7,13 @@
 //!
 //! Script apps are used when you only want to authorize one user, that you own. This is the app
 //! type used for bots. It's special because it can keep a secret (secrets can be stored on the
-//! with the client). To create a script app, you first have to register it at https://www.reddit.com/prefs/apps.
-//! Make sure you're logged in as the user you want the script to authorize as when you register the
-//! app. At the bottom of the page, click "Create New App", and fill in the name, select script type, enter
-//! a short description (that will only be seen by you), leave the about url empty, and set the
-//! redirect uri to `https://www.example.com`. (We do this because this field is only necessary for
-//! installed apps but is required to be filled in anyway.)
+//! with the client). To create a script app, you first have to register it at
+//! [https://www.reddit.com/prefs/apps](https://www.reddit.com/prefs/apps). Make sure you're logged
+//! in as the user you want the script to authorize as when you register the app. At the bottom of
+//! the page, click "Create New App", and fill in the name, select script type, enter a short
+//! description (that will only be seen by you), leave the about url empty, and set the redirect uri
+//! to `https://www.example.com`. (We do this because this field is only necessary for installed
+//! apps but is required to be filled in anyway.)
 //!
 //! Once you create the app, a box should pop up that has the name of your app, and then shortly
 //! below it a string of random characters. This is the id of the script. Then lower in the
@@ -39,10 +40,11 @@
 //! 127.0.0.1:7878.
 //!
 //! To create an installed app, the process at first is similar to Script app types. Visit
-//! https://www.reddit.com/prefs/apps, and create a new app, this time with the installed type. Fill
-//! in the name, set it to installed app, fill in a short description (this time it's visible by
-//! anyone using your app), enter an about url if you want, and set the redirect uri to exactly
-//! `http://127.0.0.1:7878` (hopefully this will be customizable in the future).
+//! [https://www.reddit.com/prefs/apps](https://www.reddit.com/prefs/apps), and create a new app,
+//! this time with the installed type. Fill in the name, set it to installed app, fill in a short
+//! description (this time it's visible by anyone using your app), enter an about url if you want,
+//! and set the redirect uri to exactly `http://127.0.0.1:7878` (hopefully this will be customizable
+//! in the future).
 //!
 //! When you create this app, the id of the app will be shorly below the name in the box that comes
 //! upp. Now in you application code, create an `OAuthApp::InstalledApp` with the id of you app and
@@ -79,11 +81,9 @@ use net::body_from_map;
 
 
 /// Contains data for authorization for each OAuth app type
-/// Currently only Script and InstalledApp are supported
+/// Currently only `Script` and `InstalledApp` are supported
 #[derive(Debug)]
 pub enum OauthApp {
-	/// Not Implemented
-	WebApp,
 	/// Where args are (app id, redirect uri)
 	InstalledApp {
 		/// Id of the app
@@ -286,8 +286,6 @@ impl OAuth {
 					Err(Error::from(RedditError::AuthError))
 				}
 			}
-			// App types other than script and installed are unsupported right now
-			_ => unimplemented!(),
 		}
 	}
 }
@@ -334,7 +332,7 @@ impl Service for InstalledAppService {
 		let params: HashMap<_, _> = url::form_urlencoded::parse(query_str.as_bytes()).collect();
 		
 		if params.contains_key("error") {
-			warn!("Got failed authorization. Error was {}", params.get("error").unwrap());
+			warn!("Got failed authorization. Error was {}", &params["error"]);
 			Box::new(ok(Response::new().with_body("Authorization failed")))
 		} else {
 			let state = if let Some(state) = params.get("state") {
@@ -346,7 +344,7 @@ impl Service for InstalledAppService {
 				error!("State didn't match. Got state \"{}\", needed state \"{}\"", state, self.state);
 				Box::new(ok(Response::new().with_body("Authorization failed")))
 			} else {
-				let code = params.get("code").unwrap();
+				let code = &params["code"];
 				if let Some(sender) = self.code_sender.pop() {
 					sender.send(code.to_string()).unwrap();
 				}
@@ -362,7 +360,7 @@ trait RefCellPop<T> {
 
 impl<T> RefCellPop<T> for RefCell<Option<T>> {
 	fn pop(&self) -> Option<T> {
-		if { self.borrow().is_some() } {
+		if self.borrow().is_some() {
 			return self.replace(None)
 		}
 		
