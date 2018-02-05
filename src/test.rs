@@ -7,6 +7,7 @@ use std::thread;
 use net::LimitMethod;
 use data::*;
 use log;
+use hyper::Response;
 
 static ONCE: Once = ONCE_INIT;
 
@@ -72,13 +73,15 @@ fn get_posts() {
 fn installed_app_auth() {
 	init_logging();
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
-	let mut reddit = App::new("Orca Test Installed App", "v0.2.0", "/u/IntrepidPig").unwrap();
+	let mut reddit = App::new("Orca Test Installed App", "v0.3.0", "/u/IntrepidPig").unwrap();
+	let s_resp = Response::new().with_body("¡Si se puede!");
+	let e_resp = Response::new().with_body("¡Ayayay!");
 	reddit
 		.authorize(net::auth::OauthApp::InstalledApp {
 			id: installed_id,
 			redirect,
-			error_response: None,
-			success_response: None,
+			error_response: Some(e_resp),
+			success_response: Some(s_resp),
 		})
 		.unwrap();
 

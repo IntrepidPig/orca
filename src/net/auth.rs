@@ -63,12 +63,15 @@ use std::collections::HashMap;
 use std::thread;
 use std::time::{Instant, Duration};
 use std::cell::{Cell, RefCell};
+use std::sync::Arc;
+use std::ops::DerefMut;
 use rand::{self, Rng};
 
-use hyper::{Request, Method, Error as HyperError};
+use hyper::{Request, Method, Body, HttpVersion, StatusCode, Headers, Error as HyperError};
 use hyper::server::{Service, NewService, Http, Response};
 use hyper::header::{Authorization, Basic};
-use futures::Future;
+use tokio_core::reactor::Core;
+use futures::{Future, Stream};
 use futures::future::ok;
 use futures::sync::oneshot::{self, Sender, Canceled};
 use open;
@@ -194,10 +197,10 @@ impl OAuth {
 				}
 			}
 			InstalledApp {
-				ref id,
-				ref redirect,
-				success_response: ref _success_response,
-				error_response: ref _error_response,
+				id,
+				redirect,
+				success_response,
+				error_response,
 			} => {
 				// Random state string to identify this authorization instance
 				let state = rand::thread_rng()
@@ -228,7 +231,18 @@ impl OAuth {
 				
 				let mut server = Http::new().bind(&"127.0.0.1:7878".parse()?, NewInstalledAppService {
 					sender: RefCell::new(Some(code_sender)),
-					state: state.clone()
+					state: state.clone(),
+					s_resp: if let Some(resp) = success_response {
+						Some(RefCell::new(Some(resp)))
+					} else {
+						None
+					},
+					e_resp: if let Some(resp) = error_response {
+						Some(RefCell::new(Some(resp)))
+					} else {
+						None
+					},
+					core: Arc::new(RefCell::new(Core::new().unwrap())),
 				})?;
 				
 				let code: RefCell<Option<String>> = RefCell::new(None);
@@ -245,7 +259,7 @@ impl OAuth {
 				let mut params: HashMap<&str, &str> = HashMap::new();
 				params.insert("grant_type", "authorization_code");
 				params.insert("code", &code);
-				params.insert("redirect_uri", redirect);
+				params.insert("redirect_uri", &redirect);
 				
 				// Request for the access token
 				let mut tokenreq = Request::new(
@@ -293,6 +307,9 @@ impl OAuth {
 struct NewInstalledAppService {
 	sender: RefCell<Option<Sender<String>>>,
 	state: String,
+	s_resp: Option<RefCell<Option<Response<Body>>>>,
+	e_resp: Option<RefCell<Option<Response<Body>>>>,
+	core: Arc<RefCell<Core>>,
 }
 
 impl NewService for NewInstalledAppService {
@@ -304,9 +321,24 @@ impl NewService for NewInstalledAppService {
 	
 	fn new_service(&self) -> Result<Self::Instance, std::io::Error> {
 		if let Some(sender) = self.sender.pop() {
+			let s_resp = if let Some(ref resp) = self.s_resp {
+				Some(RefCell::new(Some(clone_ref_response(&resp, self.core.borrow_mut().deref_mut()))))
+			} else {
+				None
+			};
+			
+			let e_resp = if let Some(ref resp) = self.e_resp {
+				Some(RefCell::new(Some(clone_ref_response(&resp, self.core.borrow_mut().deref_mut()))))
+			} else {
+				None
+			};
+			
 			Ok(InstalledAppService {
 				code_sender: RefCell::new(Some(sender)),
-				state: self.state.clone()
+				state: self.state.clone(),
+				s_resp,
+				e_resp,
+				core: Arc::clone(&self.core)
 			})
 		} else {
 			Err(std::io::Error::from_raw_os_error(4)) // Awful hack
@@ -317,6 +349,9 @@ impl NewService for NewInstalledAppService {
 struct InstalledAppService {
 	code_sender: RefCell<Option<Sender<String>>>,
 	state: String,
+	s_resp: Option<RefCell<Option<Response<Body>>>>,
+	e_resp: Option<RefCell<Option<Response<Body>>>>,
+	core: Arc<RefCell<Core>>,
 }
 
 impl Service for InstalledAppService {
@@ -331,9 +366,23 @@ impl Service for InstalledAppService {
 		let query_str = &query_str[2..query_str.len()];
 		let params: HashMap<_, _> = url::form_urlencoded::parse(query_str.as_bytes()).collect();
 		
+		let s_resp = if let Some(ref ref_s_resp) = self.s_resp {
+			clone_ref_response(&ref_s_resp, self.core.borrow_mut().deref_mut())
+		} else {
+			Response::new().with_body("Authorization successful!")
+		};
+		let s_resp = Box::new(ok(s_resp));
+		
+		let e_resp = if let Some(ref ref_e_resp) = self.e_resp {
+			clone_ref_response(&ref_e_resp, self.core.borrow_mut().deref_mut())
+		} else {
+			Response::new().with_body("Authorization successful!")
+		};
+		let e_resp = Box::new(ok(e_resp));
+		
 		if params.contains_key("error") {
 			warn!("Got failed authorization. Error was {}", &params["error"]);
-			Box::new(ok(Response::new().with_body("Authorization failed")))
+			e_resp
 		} else {
 			let state = if let Some(state) = params.get("state") {
 				state
@@ -342,13 +391,13 @@ impl Service for InstalledAppService {
 			};
 			if *state != self.state {
 				error!("State didn't match. Got state \"{}\", needed state \"{}\"", state, self.state);
-				Box::new(ok(Response::new().with_body("Authorization failed")))
+				e_resp
 			} else {
 				let code = &params["code"];
 				if let Some(sender) = self.code_sender.pop() {
 					sender.send(code.to_string()).unwrap();
 				}
-				Box::new(ok(Response::new().with_body("Authorization successful!")))
+				s_resp
 			}
 		}
 	}
@@ -366,4 +415,33 @@ impl<T> RefCellPop<T> for RefCell<Option<T>> {
 		
 		None
 	}
+}
+
+fn clone_ref_response(ref_resp: &RefCell<Option<Response<Body>>>, core: &mut Core) -> Response<Body> {
+	let resp = ref_resp.pop().unwrap();
+	let (new_resp, back) = clone_response(resp, core);
+	*ref_resp.borrow_mut() = Some(back);
+	new_resp
+}
+
+fn clone_response(resp: Response, core: &mut Core) -> (Response, Response) {
+	let version = resp.version();
+	let headers = resp.headers().clone();
+	let status = resp.status();
+	let body = resp.body();
+	let body1 = core.run(body.concat2()).unwrap();
+	let body2 = {
+		let mut vec = Vec::new();
+		body1.clone_into(&mut vec);
+		vec
+	};
+	
+	(Response::new()
+			 .with_body(body1)
+			 .with_headers(headers.clone())
+			 .with_status(status),
+	 Response::new()
+			 .with_body(body2)
+			 .with_headers(headers)
+			 .with_status(status))
 }

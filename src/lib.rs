@@ -1,4 +1,5 @@
 #![deny(missing_docs)]
+#![feature(toowned_clone_into)]
 
 //! # orca
 //! orca is a library to make using the Reddit API from Rust easy
@@ -51,7 +52,7 @@
 //! Actually doing something is simple and similar to previous examples. To get info about the
 //! currently authorized user, simply call
 //!
-//! ```rust
+//! ```
 //! reddit.get_self()
 //! ```
 //!

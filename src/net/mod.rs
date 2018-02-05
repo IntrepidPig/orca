@@ -280,6 +280,11 @@ impl Connection {
 	pub fn set_limit(&self, limit: LimitMethod) {
 		self.limit.set(limit);
 	}
+	
+	/// Returns a reference to the tokio core in a RefCell
+	pub fn get_core(&self) -> &RefCell<Core> {
+		&self.core
+	}
 }
 
 /// Creates a HTTP/hyper Body from a hashmap, in urlencoded form.
