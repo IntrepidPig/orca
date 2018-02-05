@@ -56,19 +56,22 @@
 //! possibility of refreshing if a permanent duration wasn't requested. This should be done
 //! automatically by the `net::Connection` instance. (Currently not implemented, sorry).
 
+use std;
 use std::collections::HashMap;
 use std::thread;
 use std::time::{Instant, Duration};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::net::SocketAddr;
 use rand::{self, Rng};
 
 use hyper::{Request, Method, Error as HyperError, Uri, Server};
-use hyper::server::{Service, Http, Response};
+use hyper::server::{Service, NewService, Http, Response};
 use hyper::header::{Authorization, Basic};
 use futures::{self, Poll, Async, Future};
 use futures::future::ok;
+use futures::sync::oneshot::{self, Sender, Receiver, Canceled};
 use open;
 use url::{self, Url};
 use failure::Error;
@@ -80,7 +83,7 @@ use net::body_from_map;
 
 /// Contains data for authorization for each OAuth app type
 /// Currently only Script and InstalledApp are supported
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum OauthApp {
 	/// Not Implemented
 	WebApp,
@@ -91,9 +94,9 @@ pub enum OauthApp {
 		/// Redirect url of the installed app
 		redirect: String,
 		/// Value to show user when authorization is successful
-		success_response: Option<String>,
+		success_response: Option<Response>,
 		/// Value to show user when authorization failed
-		error_response: Option<String>,
+		error_response: Option<Response>,
 	},
 	/// Where args are (app id, app secret, username, password)
 	Script {
@@ -150,21 +153,21 @@ impl OAuth {
 	/// # Arguments
 	/// * `conn` - Connection to authorize with
 	/// * `app` - OAuth information to use (`OauthApp`)
-	pub fn new(conn: &Connection, app: &OauthApp) -> Result<OAuth, Error> {
+	pub fn new(conn: &Connection, app: OauthApp) -> Result<OAuth, Error> {
 		// TODO: get rid of unwraps and expects
 		use self::OauthApp::*;
-		match *app {
+		match app {
 			Script {
-				ref id,
-				ref secret,
-				ref username,
-				ref password,
+				id,
+				secret,
+				username,
+				password,
 			} => {
 				// authorization paramaters to request
 				let mut params: HashMap<&str, &str> = HashMap::new();
 				params.insert("grant_type", "password");
-				params.insert("username", username);
-				params.insert("password", password);
+				params.insert("username", &username);
+				params.insert("password", &password);
 
 				// Request for the bearer token
 				let mut tokenreq = Request::new(
@@ -200,7 +203,7 @@ impl OAuth {
 				ref error_response,
 			} => {
 				// Random state string to identify this authorization instance
-				let state = &rand::thread_rng()
+				let state = rand::thread_rng()
 						.gen_ascii_chars()
 						.take(16)
 						.collect::<String>();
@@ -224,28 +227,23 @@ impl OAuth {
 					open::that(browser_uri).expect("Failed to open browser");
 				});
 				
-				let mut finish = Rc::new(AuthFuture(false));
+				let (code_sender, code_reciever) = oneshot::channel::<String>();
 				
-				let success_response = success_response.clone();
-				let error_response = error_response.clone();
+				let mut server = Http::new().bind(&"127.0.0.1:7878".parse()?, NewInstalledAppService {
+					sender: RefCell::new(Some(code_sender)),
+					state: state.clone()
+				})?;
 				
-				let coderef = Rc::new(RefCell::new(String::new()));
+				let code: RefCell<Option<String>> = RefCell::new(None);
 				
-				let server = Http::new().bind(&"127.0.0.1".parse()?, || Ok({
-					// Start http server to recieve the request from the redirect uri
-					let service = InstalledAppService {
-						code: coderef.clone(),
-						finish_fut: finish.clone(),
-						state: state.clone(),
-						success_response: success_response.clone(),
-						error_response: error_response.clone()
-					};
-					
-					service
-				}))?;
+				let finish = code_reciever.and_then(|new_code| -> Result<(), Canceled> {
+					*code.borrow_mut() = Some(new_code);
+					Ok(())
+				}).map_err(|_| ());
 				
-				server.run_until(*&*finish);
-				let code = coderef.borrow().clone();
+				server.run_until(finish)?;
+				
+				let code = code.borrow().clone().expect("Code wasn't set!");
 				
 				let mut params: HashMap<&str, &str> = HashMap::new();
 				params.insert("grant_type", "authorization_code");
@@ -297,27 +295,33 @@ impl OAuth {
 	}
 }
 
-struct AuthFuture(bool);
+struct NewInstalledAppService {
+	sender: RefCell<Option<Sender<String>>>,
+	state: String,
+}
 
-impl Future for AuthFuture {
-	type Item = ();
-	type Error = ();
+impl NewService for NewInstalledAppService {
+	type Request = Request;
+	type Response = Response;
+	type Error = HyperError;
 	
-	fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-		if self.0 {
-			Ok(Async::Ready(()))
+	type Instance = InstalledAppService;
+	
+	fn new_service(&self) -> Result<Self::Instance, std::io::Error> {
+		if let Some(sender) = self.sender.pop() {
+			Ok(InstalledAppService {
+				code_sender: RefCell::new(Some(sender)),
+				state: self.state.clone()
+			})
 		} else {
-			Ok(Async::NotReady)
+			Err(std::io::Error::from_raw_os_error(4)) // Awful hack
 		}
 	}
 }
 
 struct InstalledAppService {
-	code: Rc<RefCell<String>>,
-	finish_fut: Rc<AuthFuture>,
+	code_sender: RefCell<Option<Sender<String>>>,
 	state: String,
-	success_response: Option<String>,
-	error_response: Option<String>
 }
 
 impl Service for InstalledAppService {
@@ -328,35 +332,43 @@ impl Service for InstalledAppService {
 	type Future = Box<Future<Item=Self::Response, Error=Self::Error>>;
 	
 	fn call(&self, req: Request) -> Self::Future {
-		let url = Url::parse(req.uri().as_ref()).unwrap();
-		let params: HashMap<_, _> = url.query_pairs().into_owned().collect();
+		let query_str = req.uri().as_ref();
+		let query_str = &query_str[2..query_str.len()];
+		let params: HashMap<_, _> = url::form_urlencoded::parse(query_str.as_bytes()).collect();
 		
 		if params.contains_key("error") {
 			warn!("Got failed authorization. Error was {}", params.get("error").unwrap());
-			Box::new(ok(Response::new().with_body(if let Some(resp) = self.error_response {
-				&resp
-			} else {
-				"Authorization failed"
-			})))
+			Box::new(ok(Response::new().with_body("Authorization failed")))
 		} else {
-			let state = params.get("state").unwrap();
-			if *state == self.state {
-				error!("State didn't match. Got state {}, needed state {}", state, self.state);
-				Box::new(ok(Response::new().with_body(if let Some(resp) = self.error_response {
-					&resp
-				} else {
-					"Authorization failed"
-				})))
+			let state = if let Some(state) = params.get("state") {
+				state
+			} else {
+				return Box::new(ok(Response::new().with_body("Authorization failed")))
+			};
+			if *state != self.state {
+				error!("State didn't match. Got state \"{}\", needed state \"{}\"", state, self.state);
+				Box::new(ok(Response::new().with_body("Authorization failed")))
 			} else {
 				let code = params.get("code").unwrap();
-				*self.code.borrow_mut() = code.clone();
-				self.finish_fut.0 = true;
-				Box::new(ok(Response::new().with_body(if let Some(resp) = self.success_response {
-					&resp
-				} else {
-					"Authorization successful!"
-				})))
+				if let Some(sender) = self.code_sender.pop() {
+					sender.send(code.to_string()).unwrap();
+				}
+				Box::new(ok(Response::new().with_body("Authorization successful!")))
 			}
 		}
+	}
+}
+
+trait RefCellPop<T> {
+	fn pop(&self) -> Option<T>;
+}
+
+impl<T> RefCellPop<T> for RefCell<Option<T>> {
+	fn pop(&self) -> Option<T> {
+		if { self.borrow().is_some() } {
+			return self.replace(None)
+		}
+		
+		None
 	}
 }

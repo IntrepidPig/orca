@@ -68,7 +68,6 @@ extern crate failure;
 extern crate serde;
 extern crate serde_json as json;
 extern crate open;
-extern crate tiny_http;
 extern crate url;
 extern crate rand;
 extern crate hyper;
@@ -132,7 +131,7 @@ impl App {
 	/// # Returns
 	/// A result containing either an Auth object or a certain error
 	/// To use place it in the auth field of a connection struct
-	pub fn authorize(&mut self, oauth: &net::auth::OauthApp) -> Result<(), Error> {
+	pub fn authorize(&mut self, oauth: net::auth::OauthApp) -> Result<(), Error> {
 		self.conn.auth = Some(OAuth::new(&self.conn, oauth)?);
 		Ok(())
 	}
