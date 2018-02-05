@@ -38,10 +38,10 @@ fn print_tree(listing: Listing<Comment>, level: i32) {
 print_tree(tree, 0);
 ```
 
-### Example: Authorizing as Ouath Script type
+### Example: Authorizing as OAuth Script type
 ```rust
 let mut app = App::new("appnamehere", "v0.0.2", "/u/usernamehere/");
-reddit.conn.auth = Some(reddit.authorize(OauthApp::Script(app_id, app_secret, username, password)).unwrap());
+reddit.conn.auth = Some(reddit.authorize(OAuthApp::Script(app_id, app_secret, username, password)).unwrap());
 ```
 
 > Generic Notice: This is an unstable project yadda yadda yadda use it if you dare thanks

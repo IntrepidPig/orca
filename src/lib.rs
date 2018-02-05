@@ -132,7 +132,7 @@ impl App {
 	/// # Returns
 	/// A result containing either an Auth object or a certain error
 	/// To use place it in the auth field of a connection struct
-	pub fn authorize(&mut self, oauth: net::auth::OauthApp) -> Result<(), Error> {
+	pub fn authorize(&mut self, oauth: net::auth::OAuthApp) -> Result<(), Error> {
 		self.conn.auth = Some(OAuth::new(&self.conn, oauth)?);
 		Ok(())
 	}

@@ -51,7 +51,7 @@ fn init_reddit() -> App {
 	let mut reddit = App::new("OrcaLibTest", "v0.2.0", "/u/IntrepidPig").unwrap();
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
 	reddit
-		.authorize(net::auth::OauthApp::Script {
+		.authorize(net::auth::OAuthApp::Script {
 			id: script_id,
 			secret,
 			username,
@@ -74,14 +74,33 @@ fn installed_app_auth() {
 	init_logging();
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
 	let mut reddit = App::new("Orca Test Installed App", "v0.3.0", "/u/IntrepidPig").unwrap();
-	let s_resp = Response::new().with_body("¡Si se puede!");
-	let e_resp = Response::new().with_body("¡Ayayay!");
+	use net::auth::InstalledAppError;
+	let response_gen = Box::new(|res: Result<String, InstalledAppError>| -> Result<Response, Response> {
+		match res {
+			Ok(code) => {
+				Ok(Response::new().with_body("Successfully got the code"))
+			},
+			Err(e) => {
+				use net::auth::InstalledAppError::*;
+				match e {
+					Error(err) => {
+						Ok(Response::new().with_body("Got an unknown error"))
+					},
+					MismatchedState => {
+						Ok(Response::new().with_body("The state didn't match"))
+					},
+					AlreadyRecieved => {
+						Ok(Response::new().with_body("The code has already been recieved"))
+					}
+				}
+			}
+		}
+	});
 	reddit
-		.authorize(net::auth::OauthApp::InstalledApp {
+		.authorize(net::auth::OAuthApp::InstalledApp {
 			id: installed_id,
 			redirect,
-			error_response: Some(e_resp),
-			success_response: Some(s_resp),
+			response_gen,
 		})
 		.unwrap();
 
@@ -161,7 +180,7 @@ fn comment_tree() {
 	print_tree(tree, 0);
 }
 
-//#[test(Stress)]
+#[test(Stress)]
 fn stress_test() {
 	let requests = 60;
 
@@ -209,7 +228,7 @@ fn load_post() {
 	info!("Got post: {:?}", post);
 }
 
-//#[test(message)]
+#[test(message)]
 fn message() {
 	let reddit = init_reddit();
 

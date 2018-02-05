@@ -64,14 +64,12 @@ use std::thread;
 use std::time::{Instant, Duration};
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
-use std::ops::DerefMut;
 use rand::{self, Rng};
 
-use hyper::{Request, Method, Body, HttpVersion, StatusCode, Headers, Error as HyperError};
+use hyper::{Request, Method, Error as HyperError};
 use hyper::server::{Service, NewService, Http, Response};
 use hyper::header::{Authorization, Basic};
-use tokio_core::reactor::Core;
-use futures::{Future, Stream};
+use futures::Future;
 use futures::future::ok;
 use futures::sync::oneshot::{self, Sender, Canceled};
 use open;
@@ -82,21 +80,20 @@ use errors::RedditError;
 use net::Connection;
 use net::body_from_map;
 
-
 /// Contains data for authorization for each OAuth app type
 /// Currently only `Script` and `InstalledApp` are supported
-#[derive(Debug)]
-pub enum OauthApp {
+pub enum OAuthApp {
 	/// Where args are (app id, redirect uri)
 	InstalledApp {
 		/// Id of the app
 		id: String,
 		/// Redirect url of the installed app
 		redirect: String,
-		/// Value to show user when authorization is successful
-		success_response: Option<Response>,
-		/// Value to show user when authorization failed
-		error_response: Option<Response>,
+		/// Function to generate responses based on the result of the request. The argument is a result
+		/// that is Ok with the code recieved if the HTTP callback was successful, and an error enum
+		/// if it wasn't. The closure returns a result that is either an Ok(Response) which should be
+		/// used most if not all the time, or an Err(Response) to indicate an internal error.
+		response_gen: Box<Fn(Result<String, InstalledAppError>) -> Result<Response, Response>>,
 	},
 	/// Where args are (app id, app secret, username, password)
 	Script {
@@ -152,10 +149,10 @@ impl OAuth {
 	/// Authorize the app based on input from `OAuthApp` struct.
 	/// # Arguments
 	/// * `conn` - Connection to authorize with
-	/// * `app` - OAuth information to use (`OauthApp`)
-	pub fn new(conn: &Connection, app: OauthApp) -> Result<OAuth, Error> {
+	/// * `app` - OAuth information to use (`OAuthApp`)
+	pub fn new(conn: &Connection, app: OAuthApp) -> Result<OAuth, Error> {
 		// TODO: get rid of unwraps and expects
-		use self::OauthApp::*;
+		use self::OAuthApp::*;
 		match app {
 			Script {
 				id,
@@ -199,8 +196,7 @@ impl OAuth {
 			InstalledApp {
 				id,
 				redirect,
-				success_response,
-				error_response,
+				response_gen,
 			} => {
 				// Random state string to identify this authorization instance
 				let state = rand::thread_rng()
@@ -236,17 +232,7 @@ impl OAuth {
 				let mut server = Http::new().bind(&"127.0.0.1:7878".parse()?, NewInstalledAppService {
 					sender: RefCell::new(Some(code_sender)),
 					state: state.clone(),
-					s_resp: if let Some(resp) = success_response {
-						Some(RefCell::new(Some(resp)))
-					} else {
-						None
-					},
-					e_resp: if let Some(resp) = error_response {
-						Some(RefCell::new(Some(resp)))
-					} else {
-						None
-					},
-					core: Arc::new(RefCell::new(Core::new().unwrap())),
+					response_gen: response_gen.into()
 				})?;
 				
 				// Create a code value that is optional but should be set eventually
@@ -317,14 +303,22 @@ impl OAuth {
 	}
 }
 
+/// Enum that contains possible errors from a request for the OAuth Installed App type.
+pub enum InstalledAppError {
+	/// Got a generic error in the request
+	Error(String),
+	/// The state string wasn't present or did not match
+	MismatchedState,
+	/// The code has already been recieved
+	AlreadyRecieved,
+}
+
 // The struct that creates new InstalledAppServices when necessary. Basically the same thing as the
 // InstalledAppService, not sure why it's even necessary but I'm too scared to touch it now.
 struct NewInstalledAppService {
 	sender: RefCell<Option<Sender<String>>>,
 	state: String,
-	s_resp: Option<RefCell<Option<Response<Body>>>>,
-	e_resp: Option<RefCell<Option<Response<Body>>>>,
-	core: Arc<RefCell<Core>>,
+	response_gen: Arc<Fn(Result<String, InstalledAppError>) -> Result<Response, Response>>,
 }
 
 impl NewService for NewInstalledAppService {
@@ -341,26 +335,10 @@ impl NewService for NewInstalledAppService {
 			RefCell::new(None)
 		};
 		
-		// If a success response was given clone it for the InstalledAppService
-		let s_resp = if let Some(ref resp) = self.s_resp {
-			Some(RefCell::new(Some(clone_ref_response(&resp, self.core.borrow_mut().deref_mut()))))
-		} else {
-			None
-		};
-		
-		// If an error response was given clone it for the InstalledAppService
-		let e_resp = if let Some(ref resp) = self.e_resp {
-			Some(RefCell::new(Some(clone_ref_response(&resp, self.core.borrow_mut().deref_mut()))))
-		} else {
-			None
-		};
-		
 		Ok(InstalledAppService {
 			code_sender,
 			state: self.state.clone(),
-			s_resp,
-			e_resp,
-			core: Arc::clone(&self.core)
+			response_gen: Arc::clone(&self.response_gen)
 		})
 	}
 }
@@ -371,9 +349,7 @@ impl NewService for NewInstalledAppService {
 struct InstalledAppService {
 	code_sender: RefCell<Option<Sender<String>>>,
 	state: String,
-	s_resp: Option<RefCell<Option<Response<Body>>>>,
-	e_resp: Option<RefCell<Option<Response<Body>>>>,
-	core: Arc<RefCell<Core>>,
+	response_gen: Arc<Fn(Result<String, InstalledAppError>) -> Result<Response, Response>>,
 }
 
 impl Service for InstalledAppService {
@@ -389,45 +365,47 @@ impl Service for InstalledAppService {
 		let query_str = &query_str[2..query_str.len()];
 		let params: HashMap<_, _> = url::form_urlencoded::parse(query_str.as_bytes()).collect();
 		
-		// Set the success response by cloning the existing one or creating a default one
-		let s_resp = if let Some(ref ref_s_resp) = self.s_resp {
-			clone_ref_response(&ref_s_resp, self.core.borrow_mut().deref_mut())
-		} else {
-			Response::new().with_body("Authorization successful!")
-		};
-		let s_resp = Box::new(ok(s_resp));
+		fn split(res: Result<Response, Response>) -> Response {
+			match res {
+				Ok(t) => t,
+				Err(t) => {
+					error!("User's closure generated an error response {:?}", t);
+					t
+				}
+			}
+		}
 		
-		// Set the error response by cloning the existing one or creating a default one
-		let e_resp = if let Some(ref ref_e_resp) = self.e_resp {
-			clone_ref_response(&ref_e_resp, self.core.borrow_mut().deref_mut())
-		} else {
-			Response::new().with_body("Authorization successful!")
-		};
-		let e_resp = Box::new(ok(e_resp));
+		fn create_res(gen: &Fn(Result<String, InstalledAppError>) -> Result<Response, Response>, res: Result<String, InstalledAppError>)
+			-> Box<Future<Item=Response, Error=HyperError>> {
+			let resp = gen(res);
+			Box::new(ok(split(resp)))
+		}
 		
 		// If there was an error stop here, returning the error response
 		if params.contains_key("error") {
 			warn!("Got failed authorization. Error was {}", &params["error"]);
-			e_resp
+			create_res(&*self.response_gen, Err(InstalledAppError::Error(params["error"].to_string())))
 		} else {
 			// Get the state if it exists
 			let state = if let Some(state) = params.get("state") {
 				state
 			} else {
 				// Return error response if we didn't get the state
-				return Box::new(ok(Response::new().with_body("Authorization failed")))
+				return create_res(&*self.response_gen, Err(InstalledAppError::MismatchedState))
 			};
 			// Error if the state doesn't match
 			if *state != self.state {
 				error!("State didn't match. Got state \"{}\", needed state \"{}\"", state, self.state);
-				e_resp
+				create_res(&*self.response_gen, Err(InstalledAppError::MismatchedState))
 			} else {
 				// Get the code and send it with the oneshot sender back to the main thread
 				let code = &params["code"];
 				if let Some(sender) = self.code_sender.pop() {
-					sender.send(code.to_string()).unwrap();
+					sender.send(code.clone().to_string()).unwrap();
+					create_res(&*self.response_gen, Ok(code.clone().to_string()))
+				} else {
+					create_res(&*self.response_gen, Err(InstalledAppError::AlreadyRecieved))
 				}
-				s_resp
 			}
 		}
 	}
@@ -447,38 +425,4 @@ impl<T> RefCellPop<T> for RefCell<Option<T>> {
 		
 		None
 	}
-}
-
-// Takes a reference to a RefCell<Option<Response>>, takes the Response from the RefCell (panics if
-// it doesn't exist), clones it very deeply, replaces it with what should be the same Response, and
-// returns the leftover Response.
-fn clone_ref_response(ref_resp: &RefCell<Option<Response<Body>>>, core: &mut Core) -> Response<Body> {
-	let resp = ref_resp.pop().unwrap();
-	let (new_resp, back) = clone_response(resp, core);
-	*ref_resp.borrow_mut() = Some(back);
-	new_resp
-}
-
-// Consumes a hyper response, reads the body, duplicates the body, and returns two new (hopefully)
-// identical responses.
-fn clone_response(resp: Response, core: &mut Core) -> (Response, Response) {
-	let version = resp.version();
-	let headers = resp.headers().clone();
-	let status = resp.status();
-	let body = resp.body();
-	let body1 = core.run(body.concat2()).unwrap();
-	let body2 = {
-		let mut vec = Vec::new();
-		body1.clone_into(&mut vec);
-		vec
-	};
-	
-	(Response::new()
-			 .with_body(body1)
-			 .with_headers(headers.clone())
-			 .with_status(status),
-	 Response::new()
-			 .with_body(body2)
-			 .with_headers(headers)
-			 .with_status(status))
 }
