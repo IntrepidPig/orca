@@ -227,8 +227,12 @@ impl OAuth {
 					open::that(browser_uri).expect("Failed to open browser");
 				});
 				
+				// A oneshot future channel that the hyper server has access to to send the code back
+				// to this thread.
 				let (code_sender, code_reciever) = oneshot::channel::<String>();
 				
+				// Create a server with the instance of a NewInstalledAppService struct with the
+				// responses given, the oneshot sender and the generated state string
 				let mut server = Http::new().bind(&"127.0.0.1:7878".parse()?, NewInstalledAppService {
 					sender: RefCell::new(Some(code_sender)),
 					state: state.clone(),
@@ -245,17 +249,26 @@ impl OAuth {
 					core: Arc::new(RefCell::new(Core::new().unwrap())),
 				})?;
 				
+				// Create a code value that is optional but should be set eventually
 				let code: RefCell<Option<String>> = RefCell::new(None);
 				
+				// When the code_reciever oneshot resolves, set the new_code value.
 				let finish = code_reciever.and_then(|new_code| -> Result<(), Canceled> {
 					*code.borrow_mut() = Some(new_code);
 					Ok(())
 				}).map_err(|_| ());
 				
+				// Run the server until the code future oneshot resolves and has set the code variable.
 				server.run_until(finish)?;
 				
-				let code = code.borrow().clone().expect("Code wasn't set!");
+				// Make sure we got the code. Return an error if we didn't.
+				let code = if let Some(code) = code.borrow().clone() {
+					code
+				} else {
+					return Err(Error::from(RedditError::AuthError))
+				};
 				
+				// Get the access token with the new code we just got
 				let mut params: HashMap<&str, &str> = HashMap::new();
 				params.insert("grant_type", "authorization_code");
 				params.insert("code", &code);
@@ -304,6 +317,8 @@ impl OAuth {
 	}
 }
 
+// The struct that creates new InstalledAppServices when necessary. Basically the same thing as the
+// InstalledAppService, not sure why it's even necessary but I'm too scared to touch it now.
 struct NewInstalledAppService {
 	sender: RefCell<Option<Sender<String>>>,
 	state: String,
@@ -321,12 +336,14 @@ impl NewService for NewInstalledAppService {
 	
 	fn new_service(&self) -> Result<Self::Instance, std::io::Error> {
 		if let Some(sender) = self.sender.pop() {
+			// If a success response was given clone it for the InstalledAppService
 			let s_resp = if let Some(ref resp) = self.s_resp {
 				Some(RefCell::new(Some(clone_ref_response(&resp, self.core.borrow_mut().deref_mut()))))
 			} else {
 				None
 			};
 			
+			// If an error response was given clone it for the InstalledAppService
 			let e_resp = if let Some(ref resp) = self.e_resp {
 				Some(RefCell::new(Some(clone_ref_response(&resp, self.core.borrow_mut().deref_mut()))))
 			} else {
@@ -341,11 +358,14 @@ impl NewService for NewInstalledAppService {
 				core: Arc::clone(&self.core)
 			})
 		} else {
-			Err(std::io::Error::from_raw_os_error(4)) // Awful hack
+			Err(std::io::Error::from_raw_os_error(4)) // Awful hack because I don't know what error I should return
 		}
 	}
 }
 
+// The service that has the code_sender to send the code back to the main thread, the state to verify
+// that this is the right authorization instance, the optional responses, and a tokio Core needed to
+// clone the responses.
 struct InstalledAppService {
 	code_sender: RefCell<Option<Sender<String>>>,
 	state: String,
@@ -362,10 +382,12 @@ impl Service for InstalledAppService {
 	type Future = Box<Future<Item=Self::Response, Error=Self::Error>>;
 	
 	fn call(&self, req: Request) -> Self::Future {
+		// Get the data from the request (the state and the code, or the error) in a HashMap
 		let query_str = req.uri().as_ref();
 		let query_str = &query_str[2..query_str.len()];
 		let params: HashMap<_, _> = url::form_urlencoded::parse(query_str.as_bytes()).collect();
 		
+		// Set the success response by cloning the existing one or creating a default one
 		let s_resp = if let Some(ref ref_s_resp) = self.s_resp {
 			clone_ref_response(&ref_s_resp, self.core.borrow_mut().deref_mut())
 		} else {
@@ -373,6 +395,7 @@ impl Service for InstalledAppService {
 		};
 		let s_resp = Box::new(ok(s_resp));
 		
+		// Set the error response by cloning the existing one or creating a default one
 		let e_resp = if let Some(ref ref_e_resp) = self.e_resp {
 			clone_ref_response(&ref_e_resp, self.core.borrow_mut().deref_mut())
 		} else {
@@ -380,19 +403,24 @@ impl Service for InstalledAppService {
 		};
 		let e_resp = Box::new(ok(e_resp));
 		
+		// If there was an error stop here, returning the error response
 		if params.contains_key("error") {
 			warn!("Got failed authorization. Error was {}", &params["error"]);
 			e_resp
 		} else {
+			// Get the state if it exists
 			let state = if let Some(state) = params.get("state") {
 				state
 			} else {
+				// Return error response if we didn't get the state
 				return Box::new(ok(Response::new().with_body("Authorization failed")))
 			};
+			// Error if the state doesn't match
 			if *state != self.state {
 				error!("State didn't match. Got state \"{}\", needed state \"{}\"", state, self.state);
 				e_resp
 			} else {
+				// Get the code and send it with the oneshot sender back to the main thread
 				let code = &params["code"];
 				if let Some(sender) = self.code_sender.pop() {
 					sender.send(code.to_string()).unwrap();
@@ -403,6 +431,8 @@ impl Service for InstalledAppService {
 	}
 }
 
+// A neat trait I came up with. If you have a RefCell<Option<T>>, then you can call pop() on it and
+// it will take the value out of the RefCell and give it back. If it doesn't exist, then it just returns None.
 trait RefCellPop<T> {
 	fn pop(&self) -> Option<T>;
 }
@@ -417,6 +447,9 @@ impl<T> RefCellPop<T> for RefCell<Option<T>> {
 	}
 }
 
+// Takes a reference to a RefCell<Option<Response>>, takes the Response from the RefCell (panics if
+// it doesn't exist), clones it very deeply, replaces it with what should be the same Response, and
+// returns the leftover Response.
 fn clone_ref_response(ref_resp: &RefCell<Option<Response<Body>>>, core: &mut Core) -> Response<Body> {
 	let resp = ref_resp.pop().unwrap();
 	let (new_resp, back) = clone_response(resp, core);
@@ -424,6 +457,8 @@ fn clone_ref_response(ref_resp: &RefCell<Option<Response<Body>>>, core: &mut Cor
 	new_resp
 }
 
+// Consumes a hyper response, reads the body, duplicates the body, and returns two new (hopefully)
+// identical responses.
 fn clone_response(resp: Response, core: &mut Core) -> (Response, Response) {
 	let version = resp.version();
 	let headers = resp.headers().clone();
