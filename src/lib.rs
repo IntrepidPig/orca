@@ -24,8 +24,9 @@
 //! ## Usage
 //! To simply create a reddit app instance, do
 //!
-//! ```rust
-//! let mut reddit = App::new(name, version, author)
+//! ```
+//! # use orca::App;
+//! let mut reddit = App::new(name, version, author);
 //! ```
 //!
 //! where `name`, `version`, and `author` are all `&str`s.
@@ -37,14 +38,13 @@
 //! be registered on the desktop site. It looks like this in code (assuming you already have a
 //! mutable reddit instance):
 //!
-//! ```rust
+//! ```
 //! reddit.authorize(OAuthApp::Script {
 //!     id,
 //!     secret,
 //!     username,
 //!     password
 //! }).unwrap();
-//!
 //! ```
 //! More info can be found in the documentation for the net module
 //!
@@ -100,7 +100,7 @@ use url::Url;
 
 use net::{Connection, body_from_map, uri_params_from_map};
 use net::auth::OAuth;
-use data::{Comment, Comments, Listing, Sort, Thing};
+use data::{Comment, Comments, Listing, Sort, Post, Thing};
 
 /// A reddit object
 /// ## Usage:
@@ -378,7 +378,6 @@ impl App {
 	/// * `sticky` - boolean value. True to set post as sticky, false to unset post as sticky
 	/// * `slot` - Optional slot number to fill (can only be 1 or 2, and will error otherwise)
 	/// * `id` - _fullname_ of the post to sticky
-	#[allow(unused_must_use)] // Is allowed because the request errors if the post is already sticky but that's ok
 	pub fn set_sticky(&self, sticky: bool, slot: Option<i32>, id: &str) -> Result<(), Error> {
 		let numstr;
 		let mut params: HashMap<&str, &str> = HashMap::new();
@@ -404,7 +403,7 @@ impl App {
 		);
 		req.set_body(body_from_map(&params));
 
-		self.conn.run_auth_request(req);
+		self.conn.run_auth_request(req).ok();
 
 		Ok(())
 	}
@@ -412,10 +411,7 @@ impl App {
 	/// Loads a thing and casts it to the type of anything as long as it implements the Thing trait. Experimental
 	/// # Arguments
 	/// * `fullame` - fullname of the thing
-	pub fn load_thing<T>(&self, fullname: &str) -> Result<T, Error>
-	where
-		T: Thing,
-	{
+	pub fn load_post(&self, fullname: &str) -> Result<Post, Error> {
 		let mut params: HashMap<&str, &str> = HashMap::new();
 		params.insert("names", fullname);
 
@@ -426,7 +422,7 @@ impl App {
 		);
 		let response = self.conn.run_request(req)?;
 
-		T::from_value(&response, self)
+		Post::from_value(&response, self)
 	}
 
 	/// Send a private message to a user

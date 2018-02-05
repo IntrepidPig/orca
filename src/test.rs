@@ -158,7 +158,7 @@ fn comment_tree() {
 	print_tree(tree, 0);
 }
 
-#[test(Stress)]
+//#[test(Stress)]
 fn stress_test() {
 	let requests = 60;
 
@@ -198,15 +198,15 @@ fn sticky() {
 	reddit.set_sticky(false, Some(2), "t3_6u65br").unwrap();
 }
 
-#[test(load_thing)]
-fn load_thing() {
+#[test(load_post)]
+fn load_post() {
 	let reddit = init_reddit();
 
-	let post: Post = reddit.load_thing("t3_7am0zo").unwrap();
+	let post = reddit.load_post("t3_7am0zo").unwrap();
 	info!("Got post: {:?}", post);
 }
 
-#[test(message)]
+//#[test(message)]
 fn message() {
 	let reddit = init_reddit();
 

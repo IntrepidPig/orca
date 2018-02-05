@@ -58,7 +58,7 @@ impl Thing for Comment {
 		// nice
 		macro_rules! out {
 			($val:ident) => {
-				return Err(Error::from(ParseError { thing_type: "Thread".to_string(), json: json::to_string_pretty($val).unwrap() }));
+				return Err(Error::from(ParseError { thing_type: "Comment".to_string(), json: json::to_string_pretty($val).unwrap() }));
 			};
 		}
 
