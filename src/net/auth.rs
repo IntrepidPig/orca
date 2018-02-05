@@ -61,19 +61,16 @@ use std::collections::HashMap;
 use std::thread;
 use std::time::{Instant, Duration};
 use std::cell::{Cell, RefCell};
-use std::rc::Rc;
-use std::sync::{Arc, Mutex};
-use std::net::SocketAddr;
 use rand::{self, Rng};
 
-use hyper::{Request, Method, Error as HyperError, Uri, Server};
+use hyper::{Request, Method, Error as HyperError};
 use hyper::server::{Service, NewService, Http, Response};
 use hyper::header::{Authorization, Basic};
-use futures::{self, Poll, Async, Future};
+use futures::Future;
 use futures::future::ok;
-use futures::sync::oneshot::{self, Sender, Receiver, Canceled};
+use futures::sync::oneshot::{self, Sender, Canceled};
 use open;
-use url::{self, Url};
+use url;
 use failure::Error;
 
 use errors::RedditError;
@@ -199,8 +196,8 @@ impl OAuth {
 			InstalledApp {
 				ref id,
 				ref redirect,
-				ref success_response,
-				ref error_response,
+				success_response: ref _success_response,
+				error_response: ref _error_response,
 			} => {
 				// Random state string to identify this authorization instance
 				let state = rand::thread_rng()
