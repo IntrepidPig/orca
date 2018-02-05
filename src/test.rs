@@ -50,7 +50,7 @@ fn init_reddit() -> App {
 	let mut reddit = App::new("OrcaLibTest", "v0.2.0", "/u/IntrepidPig").unwrap();
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
 	reddit
-		.authorize(&net::auth::OAuthApp::Script {
+		.authorize(net::auth::OauthApp::Script {
 			id: script_id,
 			secret,
 			username,
@@ -74,11 +74,11 @@ fn installed_app_auth() {
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
 	let mut reddit = App::new("Orca Test Installed App", "v0.2.0", "/u/IntrepidPig").unwrap();
 	reddit
-		.authorize(&net::auth::OAuthApp::InstalledApp {
+		.authorize(net::auth::OauthApp::InstalledApp {
 			id: installed_id,
 			redirect,
-			success_response: None,
 			error_response: None,
+			success_response: None,
 		})
 		.unwrap();
 
