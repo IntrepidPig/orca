@@ -212,12 +212,17 @@ fn stress_test() {
 #[test(Sticky)]
 fn sticky() {
 	let reddit = init_reddit();
+	let name = "t3_6u65br";
 
-	reddit.set_sticky(true, Some(2), "t3_6u65br").unwrap();
-	thread::sleep(Duration::new(5, 0));
+	reddit.set_sticky(true, Some(2), name).unwrap();
+	thread::sleep(Duration::new(2, 0));
+	let post = reddit.load_post(name).unwrap();
+	assert!(post.stickied);
 
-	thread::sleep(Duration::new(10, 0));
-	reddit.set_sticky(false, Some(2), "t3_6u65br").unwrap();
+	reddit.set_sticky(false, Some(2), name).unwrap();
+	thread::sleep(Duration::new(2, 0));
+	let post = reddit.load_post(name).unwrap();
+	assert!(!post.stickied);
 }
 
 #[test(load_post)]
