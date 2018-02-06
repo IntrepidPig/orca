@@ -25,6 +25,10 @@ pub struct Post {
 	pub num_comments: i64,
 	/// Url of the post
 	pub url: String,
+	/// Whether the post is stickied
+	pub stickied: bool,
+	/// Amount of times this post has been gilded
+	pub gilded: i64,
 	/// The comments on this post
 	pub comments: Listing<Comment>,
 }
@@ -75,6 +79,14 @@ impl Thing for Post {
 			Some(t) => t.to_string(),
 			None => out!(val)
 		};
+		let stickied = match post["stickied"].as_bool() {
+			Some(t) => t,
+			None => out!(val)
+		};
+		let gilded = match post["gilded"].as_i64() {
+			Some(t) => t,
+			None => out!(val)
+		};
 		let comments= app.get_comment_tree(&id)?;
 		
 		Ok(Post {
@@ -87,6 +99,8 @@ impl Thing for Post {
 			score,
 			num_comments,
 			url,
+			stickied,
+			gilded,
 			comments,
 		})
 	}
