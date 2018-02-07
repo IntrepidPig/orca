@@ -402,6 +402,13 @@ impl App {
 
 		Ok(())
 	}
+	
+	/// Sets the method to use for ratelimiting.
+	/// # Arguments
+	/// * `limit` - The method to use for ratelimiting
+	pub fn set_ratelimiting(&self, limit: net::LimitMethod) {
+		self.conn.set_limit(limit);
+	}
 
 	/// Loads a thing and casts it to the type of anything as long as it implements the Thing trait. Experimental
 	/// # Arguments
