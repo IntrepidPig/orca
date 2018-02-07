@@ -94,7 +94,7 @@ pub mod data;
 /// Errors
 pub mod errors;
 
-pub use net::auth::{self, OAuthApp, InstalledAppError};
+pub use net::auth::{self, OAuthApp, InstalledAppError, ResponseGenFn};
 pub use net::{Connection, LimitMethod};
 pub use errors::RedditError;
 

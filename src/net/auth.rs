@@ -80,6 +80,9 @@ use errors::RedditError;
 use net::Connection;
 use net::body_from_map;
 
+/// Function type that is passed into OAuthApp::InstalledApp to generate response from code retrieval.
+pub type ResponseGenFn = Fn(Result<String, InstalledAppError>) -> Result<Response, Response>;
+
 /// Contains data for authorization for each OAuth app type
 /// Currently only `Script` and `InstalledApp` are supported
 #[derive(Clone)]
@@ -94,7 +97,7 @@ pub enum OAuthApp {
 		/// that is Ok with the code recieved if the HTTP callback was successful, and an error enum
 		/// if it wasn't. The closure returns a result that is either an Ok(Response) which should be
 		/// used most if not all the time, or an Err(Response) to indicate an internal error.
-		response_gen: Option<Arc<Fn(Result<String, InstalledAppError>) -> Result<Response, Response>>>,
+		response_gen: Option<Arc<ResponseGenFn>>,
 	},
 	/// Where args are (app id, app secret, username, password)
 	Script {
@@ -357,7 +360,7 @@ pub enum InstalledAppError {
 struct NewInstalledAppService {
 	sender: RefCell<Option<Sender<Result<String, InstalledAppError>>>>,
 	state: String,
-	response_gen: Arc<Fn(Result<String, InstalledAppError>) -> Result<Response, Response>>,
+	response_gen: Arc<ResponseGenFn>,
 }
 
 impl NewService for NewInstalledAppService {
@@ -388,7 +391,7 @@ impl NewService for NewInstalledAppService {
 struct InstalledAppService {
 	code_sender: RefCell<Option<Sender<Result<String, InstalledAppError>>>>,
 	state: String,
-	response_gen: Arc<Fn(Result<String, InstalledAppError>) -> Result<Response, Response>>,
+	response_gen: Arc<ResponseGenFn>,
 }
 
 impl Service for InstalledAppService {
@@ -418,7 +421,7 @@ impl Service for InstalledAppService {
 		
 		// Create a HTTP response based on the result of the code retrieval, the code sender, and the
 		// response generator.
-		fn create_res(gen: &Fn(Result<String, InstalledAppError>) -> Result<Response, Response>, res: Result<String, InstalledAppError>, sender: &RefCell<Option<Sender<Result<String, InstalledAppError>>>>) -> Box<Future<Item = Response, Error = HyperError>> {
+		fn create_res(gen: &ResponseGenFn, res: Result<String, InstalledAppError>, sender: &RefCell<Option<Sender<Result<String, InstalledAppError>>>>) -> Box<Future<Item = Response, Error = HyperError>> {
 			let resp = if let Some(sender) = sender.pop() {
 				let resp = gen(res.clone());
 				sender.send(res).unwrap();
