@@ -419,14 +419,14 @@ impl Service for InstalledAppService {
 
 // A neat trait I came up with. If you have a RefCell<Option<T>>, then you can call pop() on it and
 // it will take the value out of the RefCell and give it back. If it doesn't exist, then it just returns None.
-trait RefCellPop<T> {
+trait RefCellExt<T> {
 	fn pop(&self) -> Option<T>;
 }
 
-impl<T> RefCellPop<T> for RefCell<Option<T>> {
+impl<T: std::fmt::Debug> RefCellExt<T> for RefCell<Option<T>> {
 	fn pop(&self) -> Option<T> {
 		if self.borrow().is_some() {
-			return self.replace(None)
+			return std::mem::replace(&mut *self.borrow_mut(), None)
 		}
 		
 		None

@@ -1,5 +1,4 @@
 #![deny(missing_docs)]
-#![feature(toowned_clone_into)]
 
 //! # orca
 //! orca is a library to make using the Reddit API from Rust easy
