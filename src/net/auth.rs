@@ -73,7 +73,7 @@ use futures::Future;
 use futures::future::ok;
 use futures::sync::oneshot::{self, Sender, Canceled};
 use open;
-use url;
+use url::{self, Url};
 use failure::Error;
 
 use errors::RedditError;
@@ -227,9 +227,15 @@ impl OAuth {
 				// to this thread.
 				let (code_sender, code_reciever) = oneshot::channel::<String>();
 				
+				// Convert the redirect url into something parseable by the HTTP server
+				let redirect_url = Url::parse(&redirect)?;
+				let main_redirect = format!("{}:{}",
+				                            redirect_url.host_str().unwrap_or("127.0.0.1"),
+				                            redirect_url.port().unwrap_or(7878).to_string());
+				
 				// Create a server with the instance of a NewInstalledAppService struct with the
 				// responses given, the oneshot sender and the generated state string
-				let mut server = Http::new().bind(&"127.0.0.1:7878".parse()?, NewInstalledAppService {
+				let mut server = Http::new().bind(&main_redirect.as_str().parse()?, NewInstalledAppService {
 					sender: RefCell::new(Some(code_sender)),
 					state: state.clone(),
 					response_gen: response_gen.into()
