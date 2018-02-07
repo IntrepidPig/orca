@@ -94,7 +94,7 @@ pub mod data;
 /// Errors
 pub mod errors;
 
-pub use net::auth::{self, OAuthApp, InstalledAppError, ResponseGenFn};
+pub use net::auth::{self, InstalledAppError, OAuthApp, ResponseGenFn};
 pub use net::{Connection, LimitMethod};
 pub use errors::RedditError;
 
@@ -405,7 +405,7 @@ impl App {
 
 		Ok(())
 	}
-	
+
 	/// Sets the method to use for ratelimiting.
 	/// # Arguments
 	/// * `limit` - The method to use for ratelimiting

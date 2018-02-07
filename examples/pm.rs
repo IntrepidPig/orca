@@ -27,16 +27,21 @@ fn main() {
 	println!("Please log in.");
 	let username = input("Username: ");
 	let password = input("Password: ");
-	
+
 	let mut reddit = App::new("orca_pm_example", "1.0", "/u/IntrepidPig").unwrap();
-	
-	let auth = OAuthApp::Script { id, secret, username, password };
+
+	let auth = OAuthApp::Script {
+		id,
+		secret,
+		username,
+		password,
+	};
 	reddit.authorize(&auth).unwrap();
-	
+
 	println!("Please enter the details of the message.");
 	let user = input("To: ");
 	let subject = input("Subject: ");
 	let message = input("Message: ");
-	
+
 	reddit.message(&user, &subject, &message).unwrap();
 }

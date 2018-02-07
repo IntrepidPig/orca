@@ -418,7 +418,7 @@ impl Service for InstalledAppService {
 				}
 			}
 		}
-		
+
 		// Create a HTTP response based on the result of the code retrieval, the code sender, and the
 		// response generator.
 		fn create_res(gen: &ResponseGenFn, res: Result<String, InstalledAppError>, sender: &RefCell<Option<Sender<Result<String, InstalledAppError>>>>) -> Box<Future<Item = Response, Error = HyperError>> {
