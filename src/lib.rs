@@ -93,12 +93,15 @@ pub mod data;
 
 /// Errors
 pub mod errors;
-use errors::RedditError;
+
+pub use net::auth::{self, OAuthApp, InstalledAppError};
+pub use net::{Connection, LimitMethod};
+pub use errors::RedditError;
 
 use failure::Error;
 use url::Url;
 
-use net::{body_from_map, uri_params_from_map, Connection};
+use net::{body_from_map, uri_params_from_map};
 use net::auth::OAuth;
 use data::{Comment, Comments, Listing, Post, Sort, Thing};
 

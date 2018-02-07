@@ -109,7 +109,8 @@ pub enum OAuthApp {
 	},
 }
 
-/// Enum representing OAuth information that has been aquired from authorization
+/// Enum representing OAuth information that has been aquired from authorization. This should only be
+/// used internally within orca.
 #[derive(Debug, Clone)]
 pub enum OAuth {
 	/// Script app type
