@@ -78,10 +78,10 @@ fn installed_app_auth() {
 	let response_gen = Arc::new(|res: Result<String, InstalledAppError>| -> Result<Response, Response> {
 		match res {
 			Ok(code) => {
-				Ok(Response::new().with_body("Successfully got the code"))
+				Ok(Response::new().with_body("Congratulations! You have been authorized"))
 			},
 			Err(e) => {
-				Err(Response::new().with_body(format!("{}", e)))
+				Err(Response::new().with_body(format!("ERROR: {}\n\nSorry for the inconvience", e)))
 			}
 		}
 	});
@@ -89,7 +89,7 @@ fn installed_app_auth() {
 		.authorize(&net::auth::OAuthApp::InstalledApp {
 			id: installed_id,
 			redirect,
-			response_gen,
+			response_gen: Some(response_gen),
 		})
 		.unwrap();
 

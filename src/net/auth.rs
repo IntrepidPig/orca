@@ -94,7 +94,7 @@ pub enum OAuthApp {
 		/// that is Ok with the code recieved if the HTTP callback was successful, and an error enum
 		/// if it wasn't. The closure returns a result that is either an Ok(Response) which should be
 		/// used most if not all the time, or an Err(Response) to indicate an internal error.
-		response_gen: Arc<Fn(Result<String, InstalledAppError>) -> Result<Response, Response>>,
+		response_gen: Option<Arc<Fn(Result<String, InstalledAppError>) -> Result<Response, Response>>>,
 	},
 	/// Where args are (app id, app secret, username, password)
 	Script {
@@ -234,12 +234,28 @@ impl OAuth {
 				                            redirect_url.host_str().unwrap_or("127.0.0.1"),
 				                            redirect_url.port().unwrap_or(7878).to_string());
 				
+				// Set the default response generator if necessary
+				let response_gen = if let &Some(ref response_gen) = response_gen {
+					Arc::clone(response_gen)
+				} else {
+					Arc::new(|res: Result<String, InstalledAppError>| -> Result<Response, Response> {
+						match res {
+							Ok(_) => {
+								Ok(Response::new().with_body("Successfully got the code"))
+							},
+							Err(e) => {
+								Err(Response::new().with_body(format!("{}", e)))
+							}
+						}
+					})
+				};
+				
 				// Create a server with the instance of a NewInstalledAppService struct with the
 				// responses given, the oneshot sender and the generated state string
 				let mut server = Http::new().bind(&main_redirect.as_str().parse()?, NewInstalledAppService {
 					sender: RefCell::new(Some(code_sender)),
 					state: state.clone(),
-					response_gen: Arc::clone(response_gen),
+					response_gen,
 				})?;
 				
 				// Create a code value that is optional but should be set eventually
