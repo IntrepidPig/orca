@@ -20,7 +20,9 @@ pub struct Listing<T> {
 impl<T> Listing<T> {
 	/// Creates a new empty listing
 	pub fn new() -> Listing<T> {
-		Listing { children: VecDeque::new() }
+		Listing {
+			children: VecDeque::new(),
+		}
 	}
 }
 
@@ -85,20 +87,16 @@ impl Listing<Comment> {
 			for item in array {
 				let kind = item["kind"].as_str().unwrap();
 				if kind == "t1" {
-					listing.children.push_back(
-						if let Ok(c) = Comment::from_value(
-							item,
-							app,
-						)
-						{
+					listing
+						.children
+						.push_back(if let Ok(c) = Comment::from_value(item, app) {
 							c
 						} else {
 							return Err(Error::from(ParseError {
 								thing_type: "Listing<Comment>".to_string(),
 								json: json::to_string_pretty(listing_data).unwrap(),
 							}));
-						},
-					);
+						});
 				} else if kind == "more" {
 					let more = item["data"]["children"].as_array().unwrap();
 					let more_id = item["data"]["id"].as_str().unwrap();

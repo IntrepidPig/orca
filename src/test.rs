@@ -1,7 +1,7 @@
 extern crate env_logger;
 
 use super::*;
-use std::sync::{Once, Arc, ONCE_INIT};
+use std::sync::{Arc, Once, ONCE_INIT};
 use std::time::Duration;
 use std::thread;
 use net::LimitMethod;
@@ -75,16 +75,14 @@ fn installed_app_auth() {
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
 	let mut reddit = App::new("Orca Test Installed App", "v0.3.0", "/u/IntrepidPig").unwrap();
 	use net::auth::InstalledAppError;
-	let response_gen = Arc::new(|res: Result<String, InstalledAppError>| -> Result<Response, Response> {
-		match res {
-			Ok(code) => {
-				Ok(Response::new().with_body("Congratulations! You have been authorized"))
-			},
-			Err(e) => {
-				Err(Response::new().with_body(format!("ERROR: {}\n\nSorry for the inconvience", e)))
+	let response_gen = Arc::new(
+		|res: Result<String, InstalledAppError>| -> Result<Response, Response> {
+			match res {
+				Ok(code) => Ok(Response::new().with_body("Congratulations! You have been authorized")),
+				Err(e) => Err(Response::new().with_body(format!("ERROR: {}\n\nSorry for the inconvience", e))),
 			}
-		}
-	});
+		},
+	);
 	reddit
 		.authorize(&net::auth::OAuthApp::InstalledApp {
 			id: installed_id,
@@ -158,9 +156,7 @@ fn comment_tree() {
 			}
 			println!(
 				"{} by {} (parent: {})",
-				comment.id,
-				comment.author,
-				comment.parent_id
+				comment.id, comment.author, comment.parent_id
 			);
 			print_tree(comment.replies, level + 1);
 		}

@@ -67,9 +67,7 @@ impl Connection {
 	pub fn new(appname: &str, appversion: &str, appauthor: &str) -> Result<Connection, Error> {
 		let useragent = UserAgent::new(format!(
 			"linux:{}:{} (by {})",
-			appname,
-			appversion,
-			appauthor
+			appname, appversion, appauthor
 		));
 		let core = Core::new()?;
 		let handle = core.handle();
@@ -135,7 +133,6 @@ impl Connection {
 		// Log the request
 		trace!("Sending request {:?}", req);
 
-
 		// Execute the request!
 		let response = self.client.request(req);
 		let response = self.core.borrow_mut().run(response)?;
@@ -169,10 +166,8 @@ impl Connection {
 				"Have {} seconds remaining to ratelimit reset",
 				secs_remaining
 			);
-			self.reset_time.set(
-				Instant::now() +
-					Duration::new(secs_remaining, 0),
-			);
+			self.reset_time
+				.set(Instant::now() + Duration::new(secs_remaining, 0));
 		}
 		trace!(
 			"Ratelimiting:\n\tRequests used: {:?}\n\tRequests remaining: {:?}\n\tReset time: {:?}\n\tNow: {:?}",
@@ -252,12 +247,11 @@ impl Connection {
 									auth.refresh(self);
 								}
 								token.borrow().to_string()
-
 							} else if let Some(expire_instant) = expire_instant.get() {
 								if Instant::now() > expire_instant {
-									return Err(Error::from(
-										RedditError::Forbidden { request: format!("{:?}", req_str) },
-									));
+									return Err(Error::from(RedditError::Forbidden {
+										request: format!("{:?}", req_str),
+									}));
 								} else {
 									token.borrow().to_string()
 								}
@@ -270,9 +264,9 @@ impl Connection {
 			);
 			self.run_request(req)
 		} else {
-			Err(Error::from(
-				RedditError::Forbidden { request: format!("{:?}", req) },
-			))
+			Err(Error::from(RedditError::Forbidden {
+				request: format!("{:?}", req),
+			}))
 		}
 	}
 
@@ -280,7 +274,7 @@ impl Connection {
 	pub fn set_limit(&self, limit: LimitMethod) {
 		self.limit.set(limit);
 	}
-	
+
 	/// Returns a reference to the tokio core in a RefCell
 	pub fn get_core(&self) -> &RefCell<Core> {
 		&self.core

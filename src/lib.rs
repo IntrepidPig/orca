@@ -62,25 +62,25 @@
 //!
 
 extern crate chrono;
+extern crate failure;
 #[macro_use]
 extern crate failure_derive;
-extern crate failure;
-extern crate serde;
-extern crate serde_json as json;
-extern crate open;
-extern crate url;
-extern crate rand;
-extern crate hyper;
-extern crate tokio_core;
 extern crate futures;
+extern crate hyper;
 extern crate hyper_tls;
 #[macro_use]
 extern crate log;
+extern crate open;
+extern crate rand;
+extern crate serde;
+extern crate serde_json as json;
+extern crate tokio_core;
+extern crate url;
 
 use std::collections::{HashMap, VecDeque};
 
 use json::Value;
-use hyper::{Request, Method};
+use hyper::{Method, Request};
 
 #[cfg(test)]
 mod test;
@@ -98,9 +98,9 @@ use errors::RedditError;
 use failure::Error;
 use url::Url;
 
-use net::{Connection, body_from_map, uri_params_from_map};
+use net::{body_from_map, uri_params_from_map, Connection};
 use net::auth::OAuth;
-use data::{Comment, Comments, Listing, Sort, Post, Thing};
+use data::{Comment, Comments, Listing, Post, Sort, Thing};
 
 /// A reddit object
 /// ## Usage:
@@ -148,12 +148,11 @@ impl App {
 			Url::parse_with_params(
 				&format!(
 					"https://www.reddit.com/r/{}/.\
-                     json",
+					 json",
 					sub
 				),
 				sort.param(),
-			)?
-				.into_string()
+			)?.into_string()
 				.parse()?, // TODO clean
 		);
 
@@ -207,8 +206,7 @@ impl App {
 	pub fn get_user(&self, name: &str) -> Result<Value, Error> {
 		let req = Request::new(
 			Method::Get,
-			format!("https://www.reddit.com/user/{}/about/.json", name)
-				.parse()?,
+			format!("https://www.reddit.com/user/{}/about/.json", name).parse()?,
 		);
 
 		self.conn.run_request(req)
@@ -266,15 +264,13 @@ impl App {
 		// TODO add sorting and shit
 		let mut req = Request::new(
 			Method::Get,
-			format!("https://www.reddit.com/comments/{}/.json", post)
-				.parse()?,
+			format!("https://www.reddit.com/comments/{}/.json", post).parse()?,
 		);
 
 		let mut params: HashMap<&str, &str> = HashMap::new();
 		params.insert("limit", "2147483648");
 		params.insert("depth", "2147483648");
 		req.set_body(body_from_map(&params));
-
 
 		let data = self.conn.run_request(req)?;
 		let data = data[1]["data"]["children"].clone();
@@ -398,8 +394,7 @@ impl App {
 
 		let mut req = Request::new(
 			Method::Post,
-			"https://oauth.reddit.com/api/set_subreddit_sticky/.json"
-				.parse()?,
+			"https://oauth.reddit.com/api/set_subreddit_sticky/.json".parse()?,
 		);
 		req.set_body(body_from_map(&params));
 
@@ -417,8 +412,7 @@ impl App {
 
 		let req = Request::new(
 			Method::Get,
-			format!("https://www.reddit.com/by_id/{}/.json", fullname)
-				.parse()?,
+			format!("https://www.reddit.com/by_id/{}/.json", fullname).parse()?,
 		);
 		let response = self.conn.run_request(req)?;
 

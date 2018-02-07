@@ -1,7 +1,7 @@
 use json;
 use json::Value;
 
-use failure::{Error, err_msg};
+use failure::{err_msg, Error};
 use errors::ParseError;
 use data::{Listing, Thing};
 use App;
