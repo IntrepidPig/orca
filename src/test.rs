@@ -84,7 +84,7 @@ fn installed_app_auth() {
 				use net::auth::InstalledAppError::*;
 				match e {
 					Error(err) => {
-						Ok(Response::new().with_body("Got an unknown error"))
+						Ok(Response::new().with_body(format!("Got unknown error: {:?}", err)))
 					},
 					MismatchedState => {
 						Ok(Response::new().with_body("The state didn't match"))
