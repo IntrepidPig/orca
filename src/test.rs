@@ -1,7 +1,7 @@
 extern crate env_logger;
 
 use super::*;
-use std::sync::{Once, ONCE_INIT};
+use std::sync::{Once, Arc, ONCE_INIT};
 use std::time::Duration;
 use std::thread;
 use net::LimitMethod;
@@ -51,7 +51,7 @@ fn init_reddit() -> App {
 	let mut reddit = App::new("OrcaLibTest", "v0.2.0", "/u/IntrepidPig").unwrap();
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
 	reddit
-		.authorize(net::auth::OAuthApp::Script {
+		.authorize(&net::auth::OAuthApp::Script {
 			id: script_id,
 			secret,
 			username,
@@ -75,7 +75,7 @@ fn installed_app_auth() {
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
 	let mut reddit = App::new("Orca Test Installed App", "v0.3.0", "/u/IntrepidPig").unwrap();
 	use net::auth::InstalledAppError;
-	let response_gen = Box::new(|res: Result<String, InstalledAppError>| -> Result<Response, Response> {
+	let response_gen = Arc::new(|res: Result<String, InstalledAppError>| -> Result<Response, Response> {
 		match res {
 			Ok(code) => {
 				Ok(Response::new().with_body("Successfully got the code"))
@@ -86,7 +86,7 @@ fn installed_app_auth() {
 		}
 	});
 	reddit
-		.authorize(net::auth::OAuthApp::InstalledApp {
+		.authorize(&net::auth::OAuthApp::InstalledApp {
 			id: installed_id,
 			redirect,
 			response_gen,
@@ -169,7 +169,7 @@ fn comment_tree() {
 	print_tree(tree, 0);
 }
 
-#[test(Stress)]
+//#[test(Stress)]
 fn stress_test() {
 	let requests = 60;
 

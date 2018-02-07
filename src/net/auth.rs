@@ -82,6 +82,7 @@ use net::body_from_map;
 
 /// Contains data for authorization for each OAuth app type
 /// Currently only `Script` and `InstalledApp` are supported
+#[derive(Clone)]
 pub enum OAuthApp {
 	/// Where args are (app id, redirect uri)
 	InstalledApp {
@@ -93,7 +94,7 @@ pub enum OAuthApp {
 		/// that is Ok with the code recieved if the HTTP callback was successful, and an error enum
 		/// if it wasn't. The closure returns a result that is either an Ok(Response) which should be
 		/// used most if not all the time, or an Err(Response) to indicate an internal error.
-		response_gen: Box<Fn(Result<String, InstalledAppError>) -> Result<Response, Response>>,
+		response_gen: Arc<Fn(Result<String, InstalledAppError>) -> Result<Response, Response>>,
 	},
 	/// Where args are (app id, app secret, username, password)
 	Script {
@@ -150,15 +151,15 @@ impl OAuth {
 	/// # Arguments
 	/// * `conn` - Connection to authorize with
 	/// * `app` - OAuth information to use (`OAuthApp`)
-	pub fn new(conn: &Connection, app: OAuthApp) -> Result<OAuth, Error> {
+	pub fn new(conn: &Connection, app: &OAuthApp) -> Result<OAuth, Error> {
 		// TODO: get rid of unwraps and expects
 		use self::OAuthApp::*;
-		match app {
+		match *app {
 			Script {
-				id,
-				secret,
-				username,
-				password,
+				ref id,
+				ref secret,
+				ref username,
+				ref password,
 			} => {
 				// authorization paramaters to request
 				let mut params: HashMap<&str, &str> = HashMap::new();
@@ -194,9 +195,9 @@ impl OAuth {
 				}
 			}
 			InstalledApp {
-				id,
-				redirect,
-				response_gen,
+				ref id,
+				ref redirect,
+				ref response_gen,
 			} => {
 				// Random state string to identify this authorization instance
 				let state = rand::thread_rng()
@@ -238,7 +239,7 @@ impl OAuth {
 				let mut server = Http::new().bind(&main_redirect.as_str().parse()?, NewInstalledAppService {
 					sender: RefCell::new(Some(code_sender)),
 					state: state.clone(),
-					response_gen: response_gen.into()
+					response_gen: Arc::clone(response_gen),
 				})?;
 				
 				// Create a code value that is optional but should be set eventually
