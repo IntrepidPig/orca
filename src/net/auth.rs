@@ -368,10 +368,8 @@ impl NewService for NewInstalledAppService {
 
 	fn new_service(&self) -> Result<Self::Instance, std::io::Error> {
 		let code_sender = if let Some(sender) = self.sender.pop() {
-			println!("Created service with sender");
 			RefCell::new(Some(sender))
 		} else {
-			println!("Didn't have sender for new service");
 			RefCell::new(None)
 		};
 
@@ -421,12 +419,10 @@ impl Service for InstalledAppService {
 		// response generator.
 		fn create_res(gen: &Fn(Result<String, InstalledAppError>) -> Result<Response, Response>, res: Result<String, InstalledAppError>, sender: &RefCell<Option<Sender<Result<String, InstalledAppError>>>>) -> Box<Future<Item = Response, Error = HyperError>> {
 			let resp = if let Some(sender) = sender.pop() {
-				println!("Got sender");
 				let resp = gen(res.clone());
 				sender.send(res).unwrap();
 				resp
 			} else {
-				println!("Didn't have sender");
 				gen(Err(InstalledAppError::AlreadyRecieved))
 			};
 			Box::new(ok(split(resp)))
