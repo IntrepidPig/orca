@@ -405,6 +405,8 @@ impl Service for InstalledAppService {
 		let query_str = &query_str[2..query_str.len()];
 		let params: HashMap<_, _> = url::form_urlencoded::parse(query_str.as_bytes()).collect();
 
+		// Get the response from a Result<Response, Response> and log an error when a response is
+		// failed.
 		fn split(res: Result<Response, Response>) -> Response {
 			match res {
 				Ok(t) => t,
@@ -414,7 +416,9 @@ impl Service for InstalledAppService {
 				}
 			}
 		}
-
+		
+		// Create a HTTP response based on the result of the code retrieval, the code sender, and the
+		// response generator.
 		fn create_res(gen: &Fn(Result<String, InstalledAppError>) -> Result<Response, Response>, res: Result<String, InstalledAppError>, sender: &RefCell<Option<Sender<Result<String, InstalledAppError>>>>) -> Box<Future<Item = Response, Error = HyperError>> {
 			let resp = if let Some(sender) = sender.pop() {
 				println!("Got sender");

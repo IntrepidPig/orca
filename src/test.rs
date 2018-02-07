@@ -79,7 +79,7 @@ fn installed_app_auth() {
 		|res: Result<String, InstalledAppError>| -> Result<Response, Response> {
 			match res {
 				Ok(code) => Ok(Response::new().with_body("Congratulations! You have been authorized")),
-				Err(e) => Err(Response::new().with_body(format!("ERROR: {}\n\nSorry for the inconvience", e))),
+				Err(e) => Ok(Response::new().with_body(format!("ERROR: {}\n\nSorry for the inconvience", e))),
 			}
 		},
 	);
