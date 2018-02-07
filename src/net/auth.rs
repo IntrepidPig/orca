@@ -71,7 +71,7 @@ use hyper::server::{Service, NewService, Http, Response};
 use hyper::header::{Authorization, Basic};
 use futures::Future;
 use futures::future::ok;
-use futures::sync::oneshot::{self, Sender, Canceled};
+use futures::sync::oneshot::{self, Sender};
 use open;
 use url::{self, Url};
 use failure::Error;
@@ -225,7 +225,7 @@ impl OAuth {
 				
 				// A oneshot future channel that the hyper server has access to to send the code back
 				// to this thread.
-				let (code_sender, code_reciever) = oneshot::channel::<String>();
+				let (code_sender, code_reciever) = oneshot::channel::<Result<String, InstalledAppError>>();
 				
 				// Convert the redirect url into something parseable by the HTTP server
 				let redirect_url = Url::parse(&redirect)?;
@@ -242,22 +242,33 @@ impl OAuth {
 				})?;
 				
 				// Create a code value that is optional but should be set eventually
-				let code: RefCell<Option<String>> = RefCell::new(None);
+				let code: RefCell<Result<String, InstalledAppError>> = RefCell::new(Err(InstalledAppError::NeverRecieved));
 				
 				// When the code_reciever oneshot resolves, set the new_code value.
-				let finish = code_reciever.and_then(|new_code| -> Result<(), Canceled> {
-					*code.borrow_mut() = Some(new_code);
-					Ok(())
-				}).map_err(|_| ());
+				let finish = code_reciever.then(|new_code| -> Result<(), ()> {
+					if let Ok(new_code) = new_code {
+						match new_code {
+							Ok(new_code) => {
+								*code.borrow_mut() = Ok(new_code);
+								Ok(())
+							},
+							Err(e) => {
+								*code.borrow_mut() = Err(e);
+								Err(())
+							}
+						}
+					} else {
+						Err(())
+					}
+				});
 				
 				// Run the server until the code future oneshot resolves and has set the code variable.
 				server.run_until(finish)?;
 				
 				// Make sure we got the code. Return an error if we didn't.
-				let code = if let Some(code) = code.borrow().clone() {
-					code
-				} else {
-					return Err(Error::from(RedditError::AuthError))
+				let code = match *code.borrow() {
+					Ok(ref new_code) => new_code.clone(),
+					Err(ref e) => return Err(e.clone().into())
 				};
 				
 				// Get the access token with the new code we just got
@@ -310,19 +321,29 @@ impl OAuth {
 }
 
 /// Enum that contains possible errors from a request for the OAuth Installed App type.
+#[derive(Debug, Fail, Clone)]
 pub enum InstalledAppError {
 	/// Got a generic error in the request
-	Error(String),
+	#[fail(display = "Got an unknown error: {}", msg)]
+	Error {
+		/// The message included in the error
+		msg: String
+	},
 	/// The state string wasn't present or did not match
+	#[fail(display = "The states did not match")]
 	MismatchedState,
 	/// The code has already been recieved
+	#[fail(display = "A code was already recieved")]
 	AlreadyRecieved,
+	/// No message was ever recieved
+	#[fail(display = "No message was ever recieved")]
+	NeverRecieved
 }
 
 // The struct that creates new InstalledAppServices when necessary. Basically the same thing as the
 // InstalledAppService, not sure why it's even necessary but I'm too scared to touch it now.
 struct NewInstalledAppService {
-	sender: RefCell<Option<Sender<String>>>,
+	sender: RefCell<Option<Sender<Result<String, InstalledAppError>>>>,
 	state: String,
 	response_gen: Arc<Fn(Result<String, InstalledAppError>) -> Result<Response, Response>>,
 }
@@ -336,8 +357,10 @@ impl NewService for NewInstalledAppService {
 	
 	fn new_service(&self) -> Result<Self::Instance, std::io::Error> {
 		let code_sender = if let Some(sender) = self.sender.pop() {
+			println!("Created service with sender");
 			RefCell::new(Some(sender))
 		} else {
+			println!("Didn't have sender for new service");
 			RefCell::new(None)
 		};
 		
@@ -353,7 +376,7 @@ impl NewService for NewInstalledAppService {
 // that this is the right authorization instance, the optional responses, and a tokio Core needed to
 // clone the responses.
 struct InstalledAppService {
-	code_sender: RefCell<Option<Sender<String>>>,
+	code_sender: RefCell<Option<Sender<Result<String, InstalledAppError>>>>,
 	state: String,
 	response_gen: Arc<Fn(Result<String, InstalledAppError>) -> Result<Response, Response>>,
 }
@@ -381,37 +404,43 @@ impl Service for InstalledAppService {
 			}
 		}
 		
-		fn create_res(gen: &Fn(Result<String, InstalledAppError>) -> Result<Response, Response>, res: Result<String, InstalledAppError>)
+		fn create_res(gen: &Fn(Result<String, InstalledAppError>) -> Result<Response, Response>,
+		              res: Result<String, InstalledAppError>,
+		              sender: &RefCell<Option<Sender<Result<String, InstalledAppError>>>>)
 			-> Box<Future<Item=Response, Error=HyperError>> {
-			let resp = gen(res);
+			let resp = if let Some(sender) = sender.pop() {
+				println!("Got sender");
+				let resp = gen(res.clone());
+				sender.send(res).unwrap();
+				resp
+			} else {
+				println!("Didn't have sender");
+				gen(Err(InstalledAppError::AlreadyRecieved))
+			};
 			Box::new(ok(split(resp)))
 		}
 		
 		// If there was an error stop here, returning the error response
 		if params.contains_key("error") {
 			warn!("Got failed authorization. Error was {}", &params["error"]);
-			create_res(&*self.response_gen, Err(InstalledAppError::Error(params["error"].to_string())))
+			let err = InstalledAppError::Error { msg: params["error"].to_string() };
+			create_res(&*self.response_gen, Err(err.clone()), &self.code_sender)
 		} else {
 			// Get the state if it exists
 			let state = if let Some(state) = params.get("state") {
 				state
 			} else {
 				// Return error response if we didn't get the state
-				return create_res(&*self.response_gen, Err(InstalledAppError::MismatchedState))
+				return create_res(&*self.response_gen, Err(InstalledAppError::MismatchedState), &self.code_sender)
 			};
 			// Error if the state doesn't match
 			if *state != self.state {
 				error!("State didn't match. Got state \"{}\", needed state \"{}\"", state, self.state);
-				create_res(&*self.response_gen, Err(InstalledAppError::MismatchedState))
+				create_res(&*self.response_gen, Err(InstalledAppError::MismatchedState), &self.code_sender)
 			} else {
 				// Get the code and send it with the oneshot sender back to the main thread
 				let code = &params["code"];
-				if let Some(sender) = self.code_sender.pop() {
-					sender.send(code.clone().to_string()).unwrap();
-					create_res(&*self.response_gen, Ok(code.clone().to_string()))
-				} else {
-					create_res(&*self.response_gen, Err(InstalledAppError::AlreadyRecieved))
-				}
+				create_res(&*self.response_gen, Ok(code.clone().into()), &self.code_sender)
 			}
 		}
 	}

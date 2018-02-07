@@ -81,18 +81,7 @@ fn installed_app_auth() {
 				Ok(Response::new().with_body("Successfully got the code"))
 			},
 			Err(e) => {
-				use net::auth::InstalledAppError::*;
-				match e {
-					Error(err) => {
-						Ok(Response::new().with_body(format!("Got unknown error: {:?}", err)))
-					},
-					MismatchedState => {
-						Ok(Response::new().with_body("The state didn't match"))
-					},
-					AlreadyRecieved => {
-						Ok(Response::new().with_body("The code has already been recieved"))
-					}
-				}
+				Err(Response::new().with_body(format!("{}", e)))
 			}
 		}
 	});
