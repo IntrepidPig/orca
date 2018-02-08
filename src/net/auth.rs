@@ -371,11 +371,7 @@ impl NewService for NewInstalledAppService {
 	type Instance = InstalledAppService;
 
 	fn new_service(&self) -> Result<Self::Instance, std::io::Error> {
-		let code_sender = if let Some(sender) = self.sender.pop() {
-			RefCell::new(Some(sender))
-		} else {
-			RefCell::new(None)
-		};
+		let code_sender = RefCell::new(self.sender.pop());
 
 		Ok(InstalledAppService {
 			code_sender,
