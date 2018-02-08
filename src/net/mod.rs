@@ -216,9 +216,6 @@ impl Connection {
 
 	/// Send a request to reddit with authorization headers
 	pub fn run_auth_request(&self, mut req: Request) -> Result<Value, Error> {
-		// Check if this connection is authorized
-		// This shit's some fuckin spaghetti tho now yo
-		// TODO cleanup
 		if let Some(ref auth) = self.auth {
 			let req_str = format!("{:?}", req);
 			req.headers_mut().set_raw(
