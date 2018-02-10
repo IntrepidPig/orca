@@ -50,14 +50,7 @@ fn init_reddit() -> App {
 	init_logging();
 	let mut reddit = App::new("OrcaLibTest", "v0.2.0", "/u/IntrepidPig").unwrap();
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
-	reddit
-		.authorize(&net::auth::OAuthApp::Script {
-			id: script_id,
-			secret,
-			username,
-			password,
-		})
-		.unwrap();
+	reddit.authorize_script(&script_id, &secret, &username, &password).unwrap();
 
 	reddit
 }
@@ -75,7 +68,7 @@ fn installed_app_auth() {
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
 	let mut reddit = App::new("Orca Test Installed App", "v0.3.0", "/u/IntrepidPig").unwrap();
 	use net::auth::InstalledAppError;
-	let response_gen = Arc::new(
+	let response_gen: Arc<ResponseGenFn> = Arc::new(
 		|res: Result<String, InstalledAppError>| -> Result<Response, Response> {
 			match res {
 				Ok(code) => Ok(Response::new().with_body("Congratulations! You have been authorized")),
@@ -83,13 +76,9 @@ fn installed_app_auth() {
 			}
 		},
 	);
-	reddit
-		.authorize(&net::auth::OAuthApp::InstalledApp {
-			id: installed_id,
-			redirect,
-			response_gen: Some(response_gen),
-		})
-		.unwrap();
+	let scopes = Scopes::all();
+	
+	reddit.authorize_installed_app(&installed_id, &redirect, response_gen, &scopes).unwrap();
 
 	reddit.get_self().unwrap();
 }
