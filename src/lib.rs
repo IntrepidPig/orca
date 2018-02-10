@@ -24,9 +24,10 @@
 //! ## Usage
 //! To simply create a reddit app instance, do
 //!
-//! ```
+//! ```rust
 //! # use orca::App;
-//! let mut reddit = App::new(name, version, author);
+//! # let (name, version, author) = ("a", "b", "c");
+//! let mut reddit = App::new(name, version, author).unwrap();
 //! ```
 //!
 //! where `name`, `version`, and `author` are all `&str`s.
@@ -38,27 +39,24 @@
 //! be registered on the desktop site. It looks like this in code (assuming you already have a
 //! mutable reddit instance):
 //!
-//! ```
-//! reddit.authorize(OAuthApp::Script {
-//!     id,
-//!     secret,
-//!     username,
-//!     password
-//! }).unwrap();
+//! ```rust,no_run
+//! # use orca::App;
+//! # let mut reddit = App::new("a", "b", "c").unwrap();
+//! # let (id, secret, username, password) = ("a", "b", "c", "d");
+//! reddit.authorize_script(id, secret, username, password).unwrap();
 //! ```
 //! More info can be found in the documentation for the net module
 //!
 //! Actually doing something is simple and similar to previous examples. To get info about the
 //! currently authorized user, simply call
 //!
-//! ```
-//! reddit.get_self()
+//! ```rust,no_run
+//! # use orca::App;
+//! # let mut reddit = App::new("a", "b", "c").unwrap();
+//! reddit.get_self();
 //! ```
 //!
 //! which will return a json value until the actual user data structure is implemented.
-//!
-//! ## Confused?
-//! You can contact me on reddit as intrepidpig, or any other site that has that username registered
 //!
 
 extern crate chrono;
