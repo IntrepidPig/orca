@@ -83,35 +83,6 @@ use net::body_from_map;
 /// Function type that is passed into OAuthApp::InstalledApp to generate response from code retrieval.
 pub type ResponseGenFn = Fn(Result<String, InstalledAppError>) -> Result<Response, Response>;
 
-/// Contains data for authorization for each OAuth app type
-/// Currently only `Script` and `InstalledApp` are supported
-#[derive(Clone)]
-pub enum OAuthApp {
-	/// Where args are (app id, redirect uri)
-	InstalledApp {
-		/// Id of the app
-		id: String,
-		/// Redirect url of the installed app
-		redirect: String,
-		/// Function to generate responses based on the result of the request. The argument is a result
-		/// that is Ok with the code recieved if the HTTP callback was successful, and an error enum
-		/// if it wasn't. The closure returns a result that is either an Ok(Response) which should be
-		/// used most if not all the time, or an Err(Response) to indicate an internal error.
-		response_gen: Option<Arc<ResponseGenFn>>,
-	},
-	/// Where args are (app id, app secret, username, password)
-	Script {
-		/// Id of the script
-		id: String,
-		/// Secret of the script
-		secret: String,
-		/// Username of the user that owns the script
-		username: String,
-		/// Password of the user that owns the script
-		password: String,
-	},
-}
-
 /// Enum representing OAuth information that has been aquired from authorization. This should only be
 /// used internally within orca.
 #[derive(Debug, Clone)]
