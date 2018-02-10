@@ -76,11 +76,12 @@ fn installed_app_auth() {
 			}
 		},
 	);
-	let scopes = Scopes::all();
+	let mut scopes = Scopes::all();
+	scopes.submit = false;
 	
 	reddit.authorize_installed_app(&installed_id, &redirect, response_gen, &scopes).unwrap();
-
 	reddit.get_self().unwrap();
+	assert!(reddit.submit_self("test", "You shouldn't be seeing this", "Sorry if you do", false).is_err());
 }
 
 #[test(sort)]

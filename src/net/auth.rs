@@ -178,7 +178,7 @@ impl OAuth {
 		}));
 		
 		// Send the request and get the bearer token as a response
-		let mut response = conn.run_request(tokenreq)?;
+		let response = conn.run_request(tokenreq)?;
 		
 		if let Some(token) = response.get("access_token") {
 			let token = token.as_str().unwrap().to_string();
@@ -219,11 +219,7 @@ impl OAuth {
 				.take(16)
 				.collect::<String>();
 		
-		// Permissions (scopes) to authorize, should be customizable in the future
-		let scopes = "identity,edit,flair,history,modconfig,modflair,modlog,modposts,\
-				              modwiki,mysubreddits,privatemessages,read,report,save,submit,\
-				              subscribe,vote,wikiedit,wikiread,account"; // TODO customizable
-		
+		let scopes = &scopes.to_string();
 		let browser_uri = format!(
 			"https://www.reddit.com/api/v1/authorize?client_id={}&response_type=code&\
 					 state={}&redirect_uri={}&duration=permanent&scope={}",
@@ -263,7 +259,7 @@ impl OAuth {
 		
 		// Create a server with the instance of a NewInstalledAppService struct with the
 		// responses given, the oneshot sender and the generated state string
-		let mut server = Http::new().bind(
+		let server = Http::new().bind(
 			&main_redirect.as_str().parse()?,
 			NewInstalledAppService {
 				sender: RefCell::new(Some(code_sender)),
@@ -320,7 +316,7 @@ impl OAuth {
 		}));
 		
 		// Send the request and get the access token as a response
-		let mut response = conn.run_request(tokenreq)?;
+		let response = conn.run_request(tokenreq)?;
 		
 		if let (Some(expires_in), Some(token), Some(refresh_token), Some(_scope)) = (
 			response.get("expires_in"),
