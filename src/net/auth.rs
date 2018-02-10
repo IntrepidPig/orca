@@ -150,187 +150,195 @@ impl OAuth {
 	pub fn refresh(&self, _conn: &Connection) {
 		unimplemented!();
 	}
-
-	/// Authorize the app based on input from `OAuthApp` struct.
+	
+	/// Authorize the app as a script
 	/// # Arguments
-	/// * `conn` - Connection to authorize with
-	/// * `app` - OAuth information to use (`OAuthApp`)
-	pub fn new(conn: &Connection, app: &OAuthApp) -> Result<OAuth, Error> {
-		// TODO: get rid of unwraps and expects
-		use self::OAuthApp::*;
-		match *app {
-			Script {
-				ref id,
-				ref secret,
-				ref username,
-				ref password,
-			} => {
-				// authorization paramaters to request
-				let mut params: HashMap<&str, &str> = HashMap::new();
-				params.insert("grant_type", "password");
-				params.insert("username", &username);
-				params.insert("password", &password);
-
-				// Request for the bearer token
-				let mut tokenreq = Request::new(
-					Method::Post,
-					"https://ssl.reddit.com/api/v1/access_token/.json".parse()?,
-				); // httpS is important
-				tokenreq.set_body(body_from_map(&params));
-				tokenreq.headers_mut().set(Authorization(Basic {
-					username: id.clone(),
-					password: Some(secret.clone()),
-				}));
-
-				// Send the request and get the bearer token as a response
-				let mut response = conn.run_request(tokenreq)?;
-
-				if let Some(token) = response.get("access_token") {
-					let token = token.as_str().unwrap().to_string();
-					Ok(OAuth::Script {
-						id: id.to_string(),
-						secret: secret.to_string(),
-						username: username.to_string(),
-						password: password.to_string(),
-						token,
-					})
-				} else {
-					Err(Error::from(RedditError::AuthError))
-				}
-			}
-			InstalledApp {
-				ref id,
-				ref redirect,
-				ref response_gen,
-			} => {
-				// Random state string to identify this authorization instance
-				let state = rand::thread_rng()
-					.gen_ascii_chars()
-					.take(16)
-					.collect::<String>();
-
-				// Permissions (scopes) to authorize, should be customizable in the future
-				let scopes = "identity,edit,flair,history,modconfig,modflair,modlog,modposts,\
+	/// * `conn` - A refernce to the connection to authorize
+	/// * `id` - The app id registered on Reddit
+	/// * `secret` - The app secret registered on Reddit
+	/// * `username` - The username of the user to authorize as
+	/// * `password` - The password of the user to authorize as
+	pub fn create_script(conn: &Connection, id: &str, secret: &str, username: &str, password: &str)
+		-> Result<OAuth, Error> {
+		// authorization paramaters to request
+		let mut params: HashMap<&str, &str> = HashMap::new();
+		params.insert("grant_type", "password");
+		params.insert("username", &username);
+		params.insert("password", &password);
+		
+		// Request for the bearer token
+		let mut tokenreq = Request::new(
+			Method::Post,
+			"https://ssl.reddit.com/api/v1/access_token/.json".parse()?,
+		); // httpS is important
+		tokenreq.set_body(body_from_map(&params));
+		tokenreq.headers_mut().set(Authorization(Basic {
+			username: id.to_string(),
+			password: Some(secret.to_string()),
+		}));
+		
+		// Send the request and get the bearer token as a response
+		let mut response = conn.run_request(tokenreq)?;
+		
+		if let Some(token) = response.get("access_token") {
+			let token = token.as_str().unwrap().to_string();
+			Ok(OAuth::Script {
+				id: id.to_string(),
+				secret: secret.to_string(),
+				username: username.to_string(),
+				password: password.to_string(),
+				token,
+			})
+		} else {
+			Err(RedditError::AuthError.into())
+		}
+	}
+	
+	/// Authorize the app as an installed app
+	/// # Arguments
+	/// * `conn` - A reference to the connection to authorize
+	/// * `id` - The app id registered on Reddit
+	/// * `redirect` - The app redirect URI registered on Reddit
+	/// * `response_gen` - An optional function that generates a hyper Response to give to the user
+	/// based on the result of the authorization attempt. The signature is `(Result<String, InstalledAppError) -> Result<Response, Response>`.
+	/// The result passed in is either Ok with the code recieved, or Err with the error that occurred.
+	/// The value returned should usually be an Ok(Response), but you can return Err(Response) to indicate
+	/// that an error occurred within the function.
+	/// * `scopes` - A reference to a Scopes instance representing the capabilites you are requesting
+	/// as an installed app.
+	pub fn create_installed_app<I: Into<Option<Arc<ResponseGenFn>>>>(conn: &Connection,
+	                                                                 id: &str,
+	                                                                 redirect: &str,
+	                                                                 response_gen: I,
+	                                                                 scopes: &Scopes)
+		-> Result<OAuth, Error> {
+		let response_gen = response_gen.into();
+		// Random state string to identify this authorization instance
+		let state = rand::thread_rng()
+				.gen_ascii_chars()
+				.take(16)
+				.collect::<String>();
+		
+		// Permissions (scopes) to authorize, should be customizable in the future
+		let scopes = "identity,edit,flair,history,modconfig,modflair,modlog,modposts,\
 				              modwiki,mysubreddits,privatemessages,read,report,save,submit,\
 				              subscribe,vote,wikiedit,wikiread,account"; // TODO customizable
-
-				let browser_uri = format!(
-					"https://www.reddit.com/api/v1/authorize?client_id={}&response_type=code&\
+		
+		let browser_uri = format!(
+			"https://www.reddit.com/api/v1/authorize?client_id={}&response_type=code&\
 					 state={}&redirect_uri={}&duration=permanent&scope={}",
-					id, state, redirect, scopes
-				);
-
-				// Open the auth url in the browser so the user can authenticate the app
-				thread::spawn(move || {
-					open::that(browser_uri).expect("Failed to open browser");
-				});
-
-				// A oneshot future channel that the hyper server has access to to send the code back
-				// to this thread.
-				let (code_sender, code_reciever) = oneshot::channel::<Result<String, InstalledAppError>>();
-
-				// Convert the redirect url into something parseable by the HTTP server
-				let redirect_url = Url::parse(&redirect)?;
-				let main_redirect = format!(
-					"{}:{}",
-					redirect_url.host_str().unwrap_or("127.0.0.1"),
-					redirect_url.port().unwrap_or(7878).to_string()
-				);
-
-				// Set the default response generator if necessary
-				let response_gen = if let &Some(ref response_gen) = response_gen {
-					Arc::clone(response_gen)
-				} else {
-					Arc::new(
-						|res: Result<String, InstalledAppError>| -> Result<Response, Response> {
-							match res {
-								Ok(_) => Ok(Response::new().with_body("Successfully got the code")),
-								Err(e) => Err(Response::new().with_body(format!("{}", e))),
-							}
-						},
-					)
-				};
-
-				// Create a server with the instance of a NewInstalledAppService struct with the
-				// responses given, the oneshot sender and the generated state string
-				let mut server = Http::new().bind(
-					&main_redirect.as_str().parse()?,
-					NewInstalledAppService {
-						sender: RefCell::new(Some(code_sender)),
-						state: state.clone(),
-						response_gen,
-					},
-				)?;
-
-				// Create a code value that is optional but should be set eventually
-				let code: RefCell<Result<String, InstalledAppError>> = RefCell::new(Err(InstalledAppError::NeverRecieved));
-
-				// When the code_reciever oneshot resolves, set the new_code value.
-				let finish = code_reciever.then(|new_code| -> Result<(), ()> {
-					if let Ok(new_code) = new_code {
-						match new_code {
-							Ok(new_code) => {
-								*code.borrow_mut() = Ok(new_code);
-								Ok(())
-							}
-							Err(e) => {
-								*code.borrow_mut() = Err(e);
-								Err(())
-							}
-						}
-					} else {
+			id, state, redirect, scopes
+		);
+		
+		// Open the auth url in the browser so the user can authenticate the app
+		thread::spawn(move || {
+			open::that(browser_uri).expect("Failed to open browser");
+		});
+		
+		// A oneshot future channel that the hyper server has access to to send the code back
+		// to this thread.
+		let (code_sender, code_reciever) = oneshot::channel::<Result<String, InstalledAppError>>();
+		
+		// Convert the redirect url into something parseable by the HTTP server
+		let redirect_url = Url::parse(&redirect)?;
+		let main_redirect = format!(
+			"{}:{}",
+			redirect_url.host_str().unwrap_or("127.0.0.1"),
+			redirect_url.port().unwrap_or(7878).to_string()
+		);
+		
+		// Set the default response generator if necessary
+		let response_gen = if let Some(ref response_gen) = response_gen {
+			Arc::clone(response_gen)
+		} else {
+			Arc::new(
+				|res: Result<String, InstalledAppError>| -> Result<Response, Response> {
+					match res {
+						Ok(_) => Ok(Response::new().with_body("Successfully got the code")),
+						Err(e) => Err(Response::new().with_body(format!("{}", e))),
+					}
+				},
+			)
+		};
+		
+		// Create a server with the instance of a NewInstalledAppService struct with the
+		// responses given, the oneshot sender and the generated state string
+		let mut server = Http::new().bind(
+			&main_redirect.as_str().parse()?,
+			NewInstalledAppService {
+				sender: RefCell::new(Some(code_sender)),
+				state: state.clone(),
+				response_gen,
+			},
+		)?;
+		
+		// Create a code value that is optional but should be set eventually
+		let code: RefCell<Result<String, InstalledAppError>> = RefCell::new(Err(InstalledAppError::NeverRecieved));
+		
+		// When the code_reciever oneshot resolves, set the new_code value.
+		let finish = code_reciever.then(|new_code| -> Result<(), ()> {
+			if let Ok(new_code) = new_code {
+				match new_code {
+					Ok(new_code) => {
+						*code.borrow_mut() = Ok(new_code);
+						Ok(())
+					}
+					Err(e) => {
+						*code.borrow_mut() = Err(e);
 						Err(())
 					}
-				});
-
-				// Run the server until the code future oneshot resolves and has set the code variable.
-				server.run_until(finish)?;
-
-				// Make sure we got the code. Return an error if we didn't.
-				let code = match *code.borrow() {
-					Ok(ref new_code) => new_code.clone(),
-					Err(ref e) => return Err(e.clone().into()),
-				};
-
-				// Get the access token with the new code we just got
-				let mut params: HashMap<&str, &str> = HashMap::new();
-				params.insert("grant_type", "authorization_code");
-				params.insert("code", &code);
-				params.insert("redirect_uri", &redirect);
-
-				// Request for the access token
-				let mut tokenreq = Request::new(
-					Method::Post,
-					"https://ssl.reddit.com/api/v1/access_token/.json".parse()?,
-				); // httpS is important
-				tokenreq.set_body(body_from_map(&params));
-				tokenreq.headers_mut().set(Authorization(Basic {
-					username: id.clone(),
-					password: None,
-				}));
-
-				// Send the request and get the access token as a response
-				let mut response = conn.run_request(tokenreq)?;
-
-				if let (Some(expires_in), Some(token), Some(refresh_token), Some(_scope)) = (
-					response.get("expires_in"),
-					response.get("access_token"),
-					response.get("refresh_token"),
-					response.get("scope"),
-				) {
-					Ok(OAuth::InstalledApp {
-						id: id.to_string(),
-						redirect: redirect.to_string(),
-						token: RefCell::new(token.as_str().unwrap().to_string()),
-						refresh_token: RefCell::new(Some(refresh_token.to_string())),
-						expire_instant: Cell::new(Some(
-							Instant::now() + Duration::new(expires_in.to_string().parse::<u64>().unwrap(), 0),
-						)),
-					})
-				} else {
-					Err(Error::from(RedditError::AuthError))
 				}
+			} else {
+				Err(())
 			}
+		});
+		
+		// Run the server until the code future oneshot resolves and has set the code variable.
+		server.run_until(finish)?;
+		
+		// Make sure we got the code. Return an error if we didn't.
+		let code = match *code.borrow() {
+			Ok(ref new_code) => new_code.clone(),
+			Err(ref e) => return Err(e.clone().into()),
+		};
+		
+		// Get the access token with the new code we just got
+		let mut params: HashMap<&str, &str> = HashMap::new();
+		params.insert("grant_type", "authorization_code");
+		params.insert("code", &code);
+		params.insert("redirect_uri", &redirect);
+		
+		// Request for the access token
+		let mut tokenreq = Request::new(
+			Method::Post,
+			"https://ssl.reddit.com/api/v1/access_token/.json".parse()?,
+		); // httpS is important
+		tokenreq.set_body(body_from_map(&params));
+		tokenreq.headers_mut().set(Authorization(Basic {
+			username: id.to_string(),
+			password: None,
+		}));
+		
+		// Send the request and get the access token as a response
+		let mut response = conn.run_request(tokenreq)?;
+		
+		if let (Some(expires_in), Some(token), Some(refresh_token), Some(_scope)) = (
+			response.get("expires_in"),
+			response.get("access_token"),
+			response.get("refresh_token"),
+			response.get("scope"),
+		) {
+			Ok(OAuth::InstalledApp {
+				id: id.to_string(),
+				redirect: redirect.to_string(),
+				token: RefCell::new(token.as_str().unwrap().to_string()),
+				refresh_token: RefCell::new(Some(refresh_token.to_string())),
+				expire_instant: Cell::new(Some(
+					Instant::now() + Duration::new(expires_in.to_string().parse::<u64>().unwrap(), 0),
+				)),
+			})
+		} else {
+			Err(Error::from(RedditError::AuthError))
 		}
 	}
 }
