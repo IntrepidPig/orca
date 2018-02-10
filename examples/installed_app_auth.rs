@@ -5,7 +5,7 @@
 extern crate hyper;
 extern crate orca;
 
-use orca::{App, InstalledAppError, OAuthApp, ResponseGenFn};
+use orca::{App, InstalledAppError, ResponseGenFn, Scopes};
 
 use hyper::Response;
 
@@ -20,8 +20,6 @@ fn input(query: &str) -> String {
 }
 
 fn main() {
-	let mut reddit = App::new("orca_installed_app_example", "1.0", "/u/IntrepidPig").unwrap();
-
 	println!("Please enter the requested information");
 	let id = input("App id: ");
 	let redirect = input("Redirect URI: ");
@@ -36,13 +34,10 @@ fn main() {
 			Ok(Response::new().with_body("Sorry! There was an error with the authorization."))
 		}
 	}));
-
-	let auth = OAuthApp::InstalledApp {
-		id,
-		redirect,
-		response_gen,
-	};
-	reddit.authorize(&auth).unwrap();
+	let scopes = Scopes::all();
+	
+	let mut reddit = App::new("orca_installed_app_example", "1.0", "/u/IntrepidPig").unwrap();
+	reddit.authorize_installed_app(&id, &redirect, response_gen, &scopes);
 
 	let user = reddit.get_self().unwrap();
 	println!("Got data: {}", user);

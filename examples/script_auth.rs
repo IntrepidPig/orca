@@ -4,7 +4,7 @@
 
 extern crate orca;
 
-use orca::{App, OAuthApp};
+use orca::App;
 
 fn input(query: &str) -> String {
 	use std::io::Write;
@@ -17,21 +17,14 @@ fn input(query: &str) -> String {
 }
 
 fn main() {
-	let mut reddit = App::new("orca_script_example", "1.0", "/u/IntrepidPig").unwrap();
-
 	println!("Please enter the requested information");
 	let username = input("Username: ");
 	let password = input("Password: ");
 	let id = input("Client id: ");
 	let secret = input("Client secret: ");
-
-	let auth = OAuthApp::Script {
-		id,
-		secret,
-		username,
-		password,
-	};
-	reddit.authorize(&auth).unwrap();
+	
+	let mut reddit = App::new("orca_script_example", "1.0", "/u/IntrepidPig").unwrap();
+	reddit.authorize_script(&id, &secret, &username, &password).unwrap();
 
 	let user = reddit.get_self().unwrap();
 	println!("Got data: {}", user);
