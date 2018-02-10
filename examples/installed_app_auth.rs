@@ -37,7 +37,7 @@ fn main() {
 	let scopes = Scopes::all();
 	
 	let mut reddit = App::new("orca_installed_app_example", "1.0", "/u/IntrepidPig").unwrap();
-	reddit.authorize_installed_app(&id, &redirect, response_gen, &scopes);
+	reddit.authorize_installed_app(&id, &redirect, response_gen, &scopes).unwrap();
 
 	let user = reddit.get_self().unwrap();
 	println!("Got data: {}", user);
