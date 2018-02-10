@@ -335,6 +335,175 @@ impl OAuth {
 	}
 }
 
+
+/// A struct representing scopes that an installed app can request permission for.
+/// To use, create an instance of the struct and set the fields you want to use to true.
+///
+/// Note: In the field documentation, "the user" refers to the currently authorized user
+pub struct Scopes {
+	/// See detailed info about the user
+	pub identity: bool,
+	/// Edit posts of the user
+	pub edit: bool,
+	/// Flair posts of the user
+	pub flair: bool,
+	/// Unknown
+	pub history: bool,
+	/// Unknown
+	pub modconfig: bool,
+	/// Unknown
+	pub modflair: bool,
+	/// Unknown
+	pub modlog: bool,
+	/// Unknown
+	pub modposts: bool,
+	/// Unknown
+	pub modwiki: bool,
+	/// Unknown
+	pub mysubreddits: bool,
+	/// Unknown
+	pub privatemessages: bool,
+	/// Unknown
+	pub read: bool,
+	/// Report posts on behalf of the user
+	pub report: bool,
+	/// Save posts to the user's account
+	pub save: bool,
+	/// Submit posts on behalf of the user
+	pub submit: bool,
+	/// Unknown
+	pub subscribe: bool,
+	/// Vote on things on behalf of the user
+	pub vote: bool,
+	/// Unknown
+	pub wikiedit: bool,
+	/// Unknown
+	pub wikiread: bool,
+	/// Unknown
+	pub account: bool,
+}
+
+impl Scopes {
+	/// Create a scopes instance with no permissions requested
+	pub fn empty() -> Scopes {
+		Scopes {
+			identity: false,
+			edit: false,
+			flair: false,
+			history: false,
+			modconfig: false,
+			modflair: false,
+			modlog: false,
+			modposts: false,
+			modwiki: false,
+			mysubreddits: false,
+			privatemessages: false,
+			read: false,
+			report: false,
+			save: false,
+			submit: false,
+			subscribe: false,
+			vote: false,
+			wikiedit: false,
+			wikiread: false,
+			account: false,
+		}
+	}
+	
+	/// Create a scopes instance with all permissions requested
+	pub fn all() -> Scopes {
+		Scopes {
+			identity: true,
+			edit: true,
+			flair: true,
+			history: true,
+			modconfig: true,
+			modflair: true,
+			modlog: true,
+			modposts: true,
+			modwiki: true,
+			mysubreddits: true,
+			privatemessages: true,
+			read: true,
+			report: true,
+			save: true,
+			submit: true,
+			subscribe: true,
+			vote: true,
+			wikiedit: true,
+			wikiread: true,
+			account: true,
+		}
+	}
+	
+	/// Convert the struct to a string representation to be sent to Reddit
+	fn to_string(&self) -> String {
+		let mut string = String::new();
+		if self.identity {
+			string.push_str("identity");
+		}
+		if self.edit {
+			string.push_str(",edit");
+		}
+		if self.flair {
+			string.push_str(",flair");
+		}
+		if self.history {
+			string.push_str(",history");
+		}
+		if self.modconfig {
+			string.push_str(",modconfig");
+		}
+		if self.modflair {
+			string.push_str(",modflair");
+		}
+		if self.modlog {
+			string.push_str(",modlog");
+		}
+		if self.modposts {
+			string.push_str(",modposts");
+		}
+		if self.modwiki {
+			string.push_str(",modwiki");
+		}
+		if self.mysubreddits {
+			string.push_str(",mysubreddits");
+		}
+		if self.privatemessages {
+			string.push_str(",privatemessages");
+		}
+		if self.read {
+			string.push_str(",read");
+		}
+		if self.report {
+			string.push_str(",report");
+		}
+		if self.save {
+			string.push_str(",save");
+		}
+		if self.submit {
+			string.push_str(",submit");
+		}
+		if self.subscribe {
+			string.push_str(",subscribe");
+		}
+		if self.vote {
+			string.push_str(",vote");
+		}
+		if self.wikiedit {
+			string.push_str(",wikiedit");
+		}
+		if self.wikiread {
+			string.push_str(",wikiread");
+		}
+		if self.account {
+			string.push_str(",account");
+		}
+		
+		string
+	}
+}
+
 /// Enum that contains possible errors from a request for the OAuth Installed App type.
 #[derive(Debug, Fail, Clone)]
 pub enum InstalledAppError {
