@@ -62,7 +62,8 @@ fn get_posts() {
 		.unwrap();
 }
 
-#[test(installed_auth)]
+// Conflicts with the force_refresh test
+//#[test(installed_auth)]
 fn installed_app_auth() {
 	init_logging();
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
@@ -190,12 +191,12 @@ fn sticky() {
 	let name = "t3_6u65br";
 
 	reddit.set_sticky(true, Some(2), name).unwrap();
-	thread::sleep(Duration::new(2, 0));
+	thread::sleep(Duration::new(3, 0));
 	let post = reddit.load_post(name).unwrap();
 	assert!(post.stickied);
 
 	reddit.set_sticky(false, Some(2), name).unwrap();
-	thread::sleep(Duration::new(2, 0));
+	thread::sleep(Duration::new(3, 0));
 	let post = reddit.load_post(name).unwrap();
 	assert!(!post.stickied);
 }
@@ -225,4 +226,43 @@ fn test_post() {
 			.submit_self("pigasusland", "Test Post", "The time is dank-o-clock", true)
 			.unwrap()
 	);
+}
+
+#[test(force_refresh)]
+fn force_refresh() {
+	init_logging();
+	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
+	let mut reddit = App::new("Orca Test Installed App", "v0.4.0", "/u/IntrepidPig").unwrap();
+	println!("Installed id is {}", installed_id);
+	reddit.authorize_installed_app(&installed_id, &redirect, None, &Scopes::all()).unwrap();
+	
+	let auth = reddit.get_conn().auth.as_ref().unwrap();
+	let old_auth = auth.clone();
+	thread::sleep(Duration::new(2, 0));
+	auth.refresh(reddit.get_conn()).unwrap();
+	reddit.get_self().unwrap();
+	let new_auth = auth.clone();
+	
+	match (old_auth, new_auth) {
+		(OAuth::InstalledApp {
+			id: old_id,
+			redirect: old_redirect,
+			token: old_token,
+			refresh_token: old_refresh_token,
+			expire_instant: old_expire_instant,
+		}, OAuth::InstalledApp {
+			id: new_id,
+			redirect: new_redirect,
+			token: new_token,
+			refresh_token: new_refresh_token,
+			expire_instant: new_expire_instant,
+		}) => {
+			assert_eq!(old_id, new_id);
+			assert_eq!(old_redirect, new_redirect);
+			assert_ne!(old_token, new_token);
+			assert_eq!(old_refresh_token, new_refresh_token);
+			assert_ne!(old_expire_instant, new_expire_instant);
+		},
+		_ => panic!("Got unmatching authorization types")
+	}
 }

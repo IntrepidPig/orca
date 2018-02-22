@@ -469,3 +469,10 @@ impl App {
 		}
 	}
 }
+
+#[cfg(test)]
+impl App {
+	pub fn get_conn(&self) -> &Connection {
+		&self.conn
+	}
+}

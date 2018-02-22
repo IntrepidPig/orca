@@ -241,7 +241,7 @@ impl Connection {
 							if let (Some(_refresh_token), Some(expire_instant)) = (refresh_token.borrow().clone(), expire_instant.get()) {
 								// If the token's expired, refresh it
 								if Instant::now() > expire_instant {
-									auth.refresh(self);
+									auth.refresh(self)?;
 								}
 								token.borrow().to_string()
 							} else if let Some(expire_instant) = expire_instant.get() {

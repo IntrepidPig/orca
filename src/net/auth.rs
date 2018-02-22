@@ -118,8 +118,60 @@ pub enum OAuth {
 
 impl OAuth {
 	/// Refreshes the token (only necessary for installed app types)
-	pub fn refresh(&self, _conn: &Connection) {
-		unimplemented!();
+	pub fn refresh(&self, conn: &Connection) -> Result<(), Error> {
+		match *self {
+			OAuth::Script { .. } => {
+				Ok(())
+			},
+			OAuth::InstalledApp {
+				ref id,
+				ref redirect,
+				ref token,
+				ref refresh_token,
+				ref expire_instant,
+			} => {
+				let old_refresh_token = if let Some(ref refresh_token) = *refresh_token.borrow() {
+					refresh_token.clone()
+				} else {
+					return Err(RedditError::AuthError.into())
+				};
+				// Get the access token with the new code we just got
+				let mut params: HashMap<&str, &str> = HashMap::new();
+				params.insert("grant_type", "refresh_token");
+				params.insert("refresh_token", &old_refresh_token);
+				
+				// Request for the access token
+				let mut tokenreq = Request::new(
+					Method::Post,
+					"https://www.reddit.com/api/v1/access_token/.json".parse()?,
+				); // httpS is important
+				tokenreq.set_method(Method::Post);
+				tokenreq.set_body(body_from_map(&params));
+				tokenreq.headers_mut().set(Authorization(Basic {
+					username: id.to_string(),
+					password: None,
+				}));
+				
+				// Send the request and get the access token as a response
+				let response = conn.run_request(tokenreq)?;
+				
+				if let (Some(expires_in), Some(new_token), Some(scope)) = (
+					response.get("expires_in"),
+					response.get("access_token"),
+					response.get("scope"),
+				) {
+					let expires_in = expires_in.as_u64().unwrap();
+					let new_token = new_token.as_str().unwrap();
+					let _scope = scope.as_str().unwrap();
+					*token.borrow_mut() = new_token.to_string();
+					expire_instant.set(Some(Instant::now() + Duration::new(expires_in.to_string().parse::<u64>().unwrap(), 0)));
+					
+					Ok(())
+				} else {
+					Err(Error::from(RedditError::AuthError))
+				}
+			}
+		}
 	}
 	
 	/// Authorize the app as a script
@@ -289,16 +341,20 @@ impl OAuth {
 		// Send the request and get the access token as a response
 		let response = conn.run_request(tokenreq)?;
 		
-		if let (Some(expires_in), Some(token), Some(refresh_token), Some(_scope)) = (
+		if let (Some(expires_in), Some(token), Some(refresh_token), Some(scope)) = (
 			response.get("expires_in"),
 			response.get("access_token"),
 			response.get("refresh_token"),
 			response.get("scope"),
 		) {
+			let expires_in = expires_in.as_u64().unwrap();
+			let token = token.as_str().unwrap();
+			let refresh_token = refresh_token.as_str().unwrap();
+			let _scope = scope.as_str().unwrap();
 			Ok(OAuth::InstalledApp {
 				id: id.to_string(),
 				redirect: redirect.to_string(),
-				token: RefCell::new(token.as_str().unwrap().to_string()),
+				token: RefCell::new(token.to_string()),
 				refresh_token: RefCell::new(Some(refresh_token.to_string())),
 				expire_instant: Cell::new(Some(
 					Instant::now() + Duration::new(expires_in.to_string().parse::<u64>().unwrap(), 0),
