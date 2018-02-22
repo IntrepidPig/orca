@@ -233,7 +233,6 @@ fn force_refresh() {
 	init_logging();
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
 	let mut reddit = App::new("Orca Test Installed App", "v0.4.0", "/u/IntrepidPig").unwrap();
-	println!("Installed id is {}", installed_id);
 	reddit.authorize_installed_app(&installed_id, &redirect, None, &Scopes::all()).unwrap();
 	
 	let auth = reddit.get_conn().auth.as_ref().unwrap();
@@ -265,4 +264,31 @@ fn force_refresh() {
 		},
 		_ => panic!("Got unmatching authorization types")
 	}
+}
+
+// Takes over 2 hours
+//#[test(auto_refresh)]
+fn auto_refresh() {
+	init_logging();
+	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
+	let mut reddit = App::new("Orca Test Installed App", "v0.4.0", "/u/IntrepidPig").unwrap();
+	reddit.authorize_installed_app(&installed_id, &redirect, None, &Scopes::all()).unwrap();
+	reddit.get_self().unwrap();
+	
+	thread::sleep(Duration::new(60 * 60 + 60, 0)); // Wait a little over an hour
+	let mut first = true;
+	reddit.get_self().unwrap_or_else(|_| { first = false; json::Value::Null } );
+	let mut second = true;
+	reddit.get_self().unwrap_or_else(|_| { second = false; json::Value::Null } );
+	
+	thread::sleep(Duration::new(60 * 60 + 60, 0)); // Wait a little over an hour
+	let mut third = true;
+	reddit.get_self().unwrap_or_else(|_| { third = false; json::Value::Null } );
+	let mut fourth = true;
+	reddit.get_self().unwrap_or_else(|_| { fourth = false; json::Value::Null } );
+	
+	fn bs(b: bool) -> &'static str { if b { "Success" } else { "Failure" } }
+	
+	println!("Tests:\n1: {}\n2: {}\n3: {}\n4: {}", bs(first), bs(second), bs(third), bs(fourth));
+	if !(first && second && third && fourth) { panic!("Test failed") }
 }
