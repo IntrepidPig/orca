@@ -44,4 +44,6 @@ let mut app = App::new("appnamehere", "v0.1.0", "/u/usernamehere/").unwrap();
 app.authorize_script(id, secret, username, password).unwrap();
 ```
 
+In order to send HTTPS requests, this library depends on openssl-sys, which requires openssl development libraries to be installed on your system to build the project. Instructions detailing this process can be found [here](https://github.com/sfackler/rust-openssl)
+
 > Generic Notice: This is an unstable project yadda yadda yadda use it if you dare thanks
