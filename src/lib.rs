@@ -230,7 +230,7 @@ impl App {
 	pub fn submit_link(&self, sub: &str, title: &str, url: &str, sendreplies: bool) -> Result<Value, Error> {
 		let mut params: HashMap<&str, &str> = HashMap::new();
 		params.insert("sr", sub);
-		params.insert("kind", "self");
+		params.insert("kind", "link");
 		params.insert("title", title);
 		params.insert("url", url);
 		params.insert("sendreplies", if sendreplies { "true" } else { "false" });
