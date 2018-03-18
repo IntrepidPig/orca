@@ -218,6 +218,32 @@ impl App {
 		self.conn.run_auth_request(req)
 	}
 
+
+	/// Submit a link post
+	/// # Arguments
+	/// * `sub` - Name of the subreddit to submit a post to
+	/// * `title` - Title of the post
+	/// * `url` - URL of the post
+	/// * `sendreplies` - Whether replies should be forwarded to the inbox of the submitter
+	/// # Returns
+	/// A result with reddit's json response to the submission
+	pub fn submit_link(&self, sub: &str, title: &str, url: &str, sendreplies: bool) -> Result<Value, Error> {
+		let mut params: HashMap<&str, &str> = HashMap::new();
+		params.insert("sr", sub);
+		params.insert("kind", "self");
+		params.insert("title", title);
+		params.insert("url", url);
+		params.insert("sendreplies", if sendreplies { "true" } else { "false" });
+
+		let mut req = Request::new(
+			Method::Post,
+			"https://oauth.reddit.com/api/submit/.json".parse()?,
+		);
+		req.set_body(body_from_map(&params));
+
+		self.conn.run_auth_request(req)
+	}
+
 	/// Gets information about a user that is not currently authorized
 	/// # Arguments
 	/// * `name` - username of the user to query
