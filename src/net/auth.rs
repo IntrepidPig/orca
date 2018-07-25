@@ -125,7 +125,7 @@ impl OAuth {
 			},
 			OAuth::InstalledApp {
 				ref id,
-				ref redirect,
+				redirect: ref _redirect,
 				ref token,
 				ref refresh_token,
 				ref expire_instant,

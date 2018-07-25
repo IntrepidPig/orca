@@ -1,13 +1,17 @@
 extern crate env_logger;
 
-use super::*;
 use std::sync::{Arc, Once, ONCE_INIT};
 use std::time::Duration;
 use std::thread;
-use net::LimitMethod;
-use data::*;
+
 use log;
 use hyper::Response;
+
+use net::LimitMethod;
+use data::*;
+use *;
+use auth::OAuth;
+
 
 static ONCE: Once = ONCE_INIT;
 
@@ -228,6 +232,15 @@ fn test_post() {
 	);
 }
 
+#[test(urlencode)]
+fn urlencode() {
+	println!(
+		"{}",
+		init_reddit()
+			.submit_self("pigasusland", "Tanks & Banks", "Will it work? Cheese & Rice", true)
+			.unwrap());
+}
+
 #[test(force_refresh)]
 fn force_refresh() {
 	init_logging();
@@ -235,10 +248,10 @@ fn force_refresh() {
 	let mut reddit = App::new("Orca Test Installed App", "v0.4.0", "/u/IntrepidPig").unwrap();
 	reddit.authorize_installed_app(&installed_id, &redirect, None, &Scopes::all()).unwrap();
 	
-	let auth = reddit.get_conn().auth.as_ref().unwrap();
+	let auth = reddit.conn.auth.as_ref().unwrap();
 	let old_auth = auth.clone();
 	thread::sleep(Duration::new(2, 0));
-	auth.refresh(reddit.get_conn()).unwrap();
+	auth.refresh(&reddit.conn).unwrap();
 	reddit.get_self().unwrap();
 	let new_auth = auth.clone();
 	

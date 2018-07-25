@@ -66,7 +66,7 @@ impl Thing for Comment {
 		let edited = match val["edited"] {
 			Value::Bool(_) | Value::Null => None,
 			Value::Number(ref num) => num.as_f64(),
-			_ => panic!("Unexpected value for \"edited\": {}", val["edited"]),
+			_ => return Err(format_err!("Unexpected value for \"edited\": {}", val["edited"])),
 		};
 		let id: String = match val["id"].as_str() {
 			Some(t) => t.to_string(),
