@@ -232,6 +232,15 @@ fn test_post() {
 	);
 }
 
+#[test(urlencode)]
+fn urlencode() {
+	println!(
+		"{}",
+		init_reddit()
+			.submit_self("pigasusland", "Tanks & Banks", "Will it work? Cheese & Rice", true)
+			.unwrap());
+}
+
 #[test(force_refresh)]
 fn force_refresh() {
 	init_logging();

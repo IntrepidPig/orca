@@ -3,6 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use hyper::{Request, Method};
 use failure::Error;
 use json::Value;
+use url::form_urlencoded;
 
 use {App, RedditError};
 use data::{Listing, Comment};
@@ -14,8 +15,9 @@ impl App {
 	/// * `text` - The body of the comment
 	/// * `thing` - Fullname of the thing to comment on
 	pub fn comment(&self, text: &str, thing: &str) -> Result<(), Error> {
+		let text: String = form_urlencoded::byte_serialize(text.as_bytes()).collect();
 		let mut params: HashMap<&str, &str> = HashMap::new();
-		params.insert("text", text);
+		params.insert("text", &text);
 		params.insert("thing_id", thing);
 		
 		let mut req = Request::new(
@@ -143,11 +145,13 @@ impl App {
 	/// # Returns
 	/// A result with reddit's json response to the submission
 	pub fn submit_self(&self, sub: &str, title: &str, text: &str, sendreplies: bool) -> Result<Value, Error> {
+		let title: String = form_urlencoded::byte_serialize(title.as_bytes()).collect();
+		let text: String = form_urlencoded::byte_serialize(text.as_bytes()).collect();
 		let mut params: HashMap<&str, &str> = HashMap::new();
 		params.insert("sr", sub);
 		params.insert("kind", "self");
-		params.insert("title", title);
-		params.insert("text", text);
+		params.insert("title", &title);
+		params.insert("text", &text);
 		params.insert("sendreplies", if sendreplies { "true" } else { "false" });
 		
 		let mut req = Request::new(

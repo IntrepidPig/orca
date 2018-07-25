@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use failure::Error;
 use hyper::{Request, Method};
+use url::form_urlencoded;
 
 use App;
 use net::body_from_map;
@@ -13,10 +14,12 @@ impl App {
 	/// * `subject` - Subject of the message
 	/// * `body` - Body of the message
 	pub fn message(&self, to: &str, subject: &str, body: &str) -> Result<(), Error> {
+		let subject: String = form_urlencoded::byte_serialize(subject.as_bytes()).collect();
+		let body: String = form_urlencoded::byte_serialize(body.as_bytes()).collect();
 		let mut params: HashMap<&str, &str> = HashMap::new();
 		params.insert("to", to);
-		params.insert("subject", subject);
-		params.insert("text", body);
+		params.insert("subject", &subject);
+		params.insert("text", &body);
 		
 		let mut req = Request::new(
 			Method::Post,
