@@ -36,7 +36,7 @@ impl<'a> Comments<'a> {
 			.expect("Could not get recent comments");
 
 		if let Some(comment) = resp.by_ref().peekable().peek() {
-			self.last = Some(comment.id.clone());
+			self.last = Some(comment.name.clone());
 		}
 
 		self.cache.append(&mut resp.children);
