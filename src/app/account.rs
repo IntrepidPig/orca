@@ -1,9 +1,8 @@
 use failure::Error;
 use hyper::{Request, Method};
-use url::Url;
 use json::Value;
 
-use {App, Sort};
+use App;
 
 impl App {
 	/// Get info of the user currently authorized

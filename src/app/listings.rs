@@ -66,15 +66,13 @@ impl App {
 	/// A listing of comments that should be flat (no replies)
 	pub fn get_recent_comments(&self, sub: &str, limit: Option<i32>, before: Option<String>) -> Result<Listing<Comment>, Error> {
 		let limit_str;
-		let before_str;
 		let mut params: HashMap<&str, &str> = HashMap::new();
 		if let Some(limit) = limit {
 			limit_str = limit.to_string();
 			params.insert("limit", &limit_str);
 		}
-		if let Some(before) = before {
-			before_str = before;
-			params.insert("before", &before_str);
+		if let Some(ref before) = before {
+			params.insert("before", before);
 		}
 		
 		let req = Request::new(
