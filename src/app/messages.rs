@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use failure::Error;
-use hyper::{Request, Method};
+use hyper::Request;
 use url::form_urlencoded;
 
-use App;
 use net::body_from_map;
+use App;
 
 impl App {
 	/// Send a private message to a user
@@ -20,13 +20,9 @@ impl App {
 		params.insert("to", to);
 		params.insert("subject", &subject);
 		params.insert("text", &body);
-		
-		let mut req = Request::new(
-			Method::Post,
-			"https://oauth.reddit.com/api/compose/.json".parse()?,
-		);
-		req.set_body(body_from_map(&params));
-		
+
+		let req = Request::post("https://oauth.reddit.com/api/compose/.json").body(body_from_map(&params)).unwrap();
+
 		match self.conn.run_auth_request(req) {
 			Ok(_) => Ok(()),
 			Err(e) => Err(e),

@@ -58,30 +58,34 @@
 //! possibility of refreshing if a permanent duration wasn't requested. This should be done
 //! automatically by the `net::Connection` instance.
 
+use rand::{self, Rng};
 use std;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use std::cell::{Cell, RefCell};
-use std::sync::Arc;
-use rand::{self, Rng};
 
-use hyper::{Error as HyperError, Method, Request};
-use hyper::server::{Http, NewService, Response, Service};
-use hyper::header::{Authorization, Basic};
-use futures::Future;
+use base64;
+use failure::Error;
 use futures::future::ok;
 use futures::sync::oneshot::{self, Sender};
+use futures::Future;
+use hyper::header::{self, HeaderValue};
+use hyper::server::Server;
+use hyper::service::{MakeService, Service};
+use hyper::{Body, Error as HyperError, Method, Request, Response};
 use open;
 use url::{self, Url};
-use failure::Error;
 
 use errors::RedditError;
-use net::Connection;
 use net::body_from_map;
+use net::Connection;
 
 /// Function type that is passed into OAuthApp::InstalledApp to generate response from code retrieval.
-pub type ResponseGenFn = Fn(Result<String, InstalledAppError>) -> Result<Response, Response>;
+pub type ResponseGenFn = (Fn(&Result<String, InstalledAppError>) -> Response<Body>) + Send + Sync;
+
+type CodeSender = Arc<Mutex<Option<Sender<Result<String, InstalledAppError>>>>>;
 
 /// Enum representing OAuth information that has been aquired from authorization. This should only be
 /// used internally within orca.
@@ -120,9 +124,7 @@ impl OAuth {
 	/// Refreshes the token (only necessary for installed app types)
 	pub fn refresh(&self, conn: &Connection) -> Result<(), Error> {
 		match *self {
-			OAuth::Script { .. } => {
-				Ok(())
-			},
+			OAuth::Script { .. } => Ok(()),
 			OAuth::InstalledApp {
 				ref id,
 				redirect: ref _redirect,
@@ -130,42 +132,27 @@ impl OAuth {
 				ref refresh_token,
 				ref expire_instant,
 			} => {
-				let old_refresh_token = if let Some(ref refresh_token) = *refresh_token.borrow() {
-					refresh_token.clone()
-				} else {
-					return Err(RedditError::AuthError.into())
-				};
+				let old_refresh_token = if let Some(ref refresh_token) = *refresh_token.borrow() { refresh_token.clone() } else { return Err(RedditError::AuthError.into()) };
 				// Get the access token with the new code we just got
 				let mut params: HashMap<&str, &str> = HashMap::new();
 				params.insert("grant_type", "refresh_token");
 				params.insert("refresh_token", &old_refresh_token);
-				
+
 				// Request for the access token
-				let mut tokenreq = Request::new(
-					Method::Post,
-					"https://www.reddit.com/api/v1/access_token/.json".parse()?,
-				); // httpS is important
-				tokenreq.set_method(Method::Post);
-				tokenreq.set_body(body_from_map(&params));
-				tokenreq.headers_mut().set(Authorization(Basic {
-					username: id.to_string(),
-					password: None,
-				}));
-				
+				let mut tokenreq = Request::builder().method(Method::POST).uri("https://www.reddit.com/api/v1/access_token/.json").body(body_from_map(&params)).unwrap();
+				// httpS is important
+				tokenreq.headers_mut().insert(header::AUTHORIZATION, HeaderValue::from_str(&format!("Basic {}", { base64::encode(&format!("{}:", id)) })).unwrap());
+
 				// Send the request and get the access token as a response
 				let response = conn.run_request(tokenreq)?;
-				
-				if let (Some(expires_in), Some(new_token), Some(scope)) = (
-					response.get("expires_in"),
-					response.get("access_token"),
-					response.get("scope"),
-				) {
+
+				if let (Some(expires_in), Some(new_token), Some(scope)) = (response.get("expires_in"), response.get("access_token"), response.get("scope")) {
 					let expires_in = expires_in.as_u64().unwrap();
 					let new_token = new_token.as_str().unwrap();
 					let _scope = scope.as_str().unwrap();
 					*token.borrow_mut() = new_token.to_string();
 					expire_instant.set(Some(Instant::now() + Duration::new(expires_in.to_string().parse::<u64>().unwrap(), 0)));
-					
+
 					Ok(())
 				} else {
 					Err(Error::from(RedditError::AuthError))
@@ -173,7 +160,7 @@ impl OAuth {
 			}
 		}
 	}
-	
+
 	/// Authorize the app as a script
 	/// # Arguments
 	/// * `conn` - A refernce to the connection to authorize
@@ -181,28 +168,21 @@ impl OAuth {
 	/// * `secret` - The app secret registered on Reddit
 	/// * `username` - The username of the user to authorize as
 	/// * `password` - The password of the user to authorize as
-	pub fn create_script(conn: &Connection, id: &str, secret: &str, username: &str, password: &str)
-		-> Result<OAuth, Error> {
+	pub fn create_script(conn: &Connection, id: &str, secret: &str, username: &str, password: &str) -> Result<OAuth, Error> {
 		// authorization paramaters to request
 		let mut params: HashMap<&str, &str> = HashMap::new();
 		params.insert("grant_type", "password");
 		params.insert("username", &username);
 		params.insert("password", &password);
-		
+
 		// Request for the bearer token
-		let mut tokenreq = Request::new(
-			Method::Post,
-			"https://ssl.reddit.com/api/v1/access_token/.json".parse()?,
-		); // httpS is important
-		tokenreq.set_body(body_from_map(&params));
-		tokenreq.headers_mut().set(Authorization(Basic {
-			username: id.to_string(),
-			password: Some(secret.to_string()),
-		}));
-		
+		let mut tokenreq = Request::builder().method(Method::POST).uri("https://ssl.reddit.com/api/v1/access_token/.json").body(body_from_map(&params)).unwrap();
+		// httpS is important
+		tokenreq.headers_mut().insert(header::AUTHORIZATION, HeaderValue::from_str(&format!("Basic {}", { base64::encode(&format!("{}:{}", id, secret)) })).unwrap());
+
 		// Send the request and get the bearer token as a response
 		let response = conn.run_request(tokenreq)?;
-		
+
 		if let Some(token) = response.get("access_token") {
 			let token = token.as_str().unwrap().to_string();
 			Ok(OAuth::Script {
@@ -216,7 +196,7 @@ impl OAuth {
 			Err(RedditError::AuthError.into())
 		}
 	}
-	
+
 	/// Authorize the app as an installed app
 	/// # Arguments
 	/// * `conn` - A reference to the connection to authorize
@@ -229,81 +209,68 @@ impl OAuth {
 	/// that an error occurred within the function.
 	/// * `scopes` - A reference to a Scopes instance representing the capabilites you are requesting
 	/// as an installed app.
-	pub fn create_installed_app<I: Into<Option<Arc<ResponseGenFn>>>>(conn: &Connection,
-	                                                                 id: &str,
-	                                                                 redirect: &str,
-	                                                                 response_gen: I,
-	                                                                 scopes: &Scopes)
-		-> Result<OAuth, Error> {
+	pub fn create_installed_app<I: Into<Option<Arc<ResponseGenFn>>>>(conn: &Connection, id: &str, redirect: &str, response_gen: I, scopes: &Scopes) -> Result<OAuth, Error> {
 		let response_gen = response_gen.into();
 		// Random state string to identify this authorization instance
-		let state = rand::thread_rng()
-				.gen_ascii_chars()
-				.take(16)
-				.collect::<String>();
-		
+		let state = rand::thread_rng().gen_ascii_chars().take(16).collect::<String>();
+
 		let scopes = &scopes.to_string();
 		let browser_uri = format!(
 			"https://www.reddit.com/api/v1/authorize?client_id={}&response_type=code&\
-					 state={}&redirect_uri={}&duration=permanent&scope={}",
+			 state={}&redirect_uri={}&duration=permanent&scope={}",
 			id, state, redirect, scopes
 		);
-		
+
+		let state_rc = Arc::new(state);
+
 		// Open the auth url in the browser so the user can authenticate the app
 		thread::spawn(move || {
 			open::that(browser_uri).expect("Failed to open browser");
 		});
-		
+
 		// A oneshot future channel that the hyper server has access to to send the code back
 		// to this thread.
 		let (code_sender, code_reciever) = oneshot::channel::<Result<String, InstalledAppError>>();
-		
+
 		// Convert the redirect url into something parseable by the HTTP server
 		let redirect_url = Url::parse(&redirect)?;
-		let main_redirect = format!(
-			"{}:{}",
-			redirect_url.host_str().unwrap_or("127.0.0.1"),
-			redirect_url.port().unwrap_or(7878).to_string()
-		);
-		
+		let main_redirect = format!("{}:{}", redirect_url.host_str().unwrap_or("127.0.0.1"), redirect_url.port().unwrap_or(7878).to_string());
+
 		// Set the default response generator if necessary
 		let response_gen = if let Some(ref response_gen) = response_gen {
 			Arc::clone(response_gen)
 		} else {
-			Arc::new(
-				|res: Result<String, InstalledAppError>| -> Result<Response, Response> {
-					match res {
-						Ok(_) => Ok(Response::new().with_body("Successfully got the code")),
-						Err(e) => Err(Response::new().with_body(format!("{}", e))),
-					}
-				},
-			)
+			Arc::new(|res: &Result<String, InstalledAppError>| -> Response<Body> {
+				match res {
+					Ok(_) => Response::new("Successfully got the code".into()),
+					Err(e) => Response::new(format!("{}", e).into()),
+				}
+			})
 		};
-		
+
 		// Create a server with the instance of a NewInstalledAppService struct with the
 		// responses given, the oneshot sender and the generated state string
-		let server = Http::new().bind(
-			&main_redirect.as_str().parse()?,
-			NewInstalledAppService {
-				sender: RefCell::new(Some(code_sender)),
-				state: state.clone(),
-				response_gen,
-			},
-		)?;
-		
+		let server = Server::bind(&main_redirect.as_str().parse()?).serve(MakeInstalledAppService {
+			code_sender: Arc::new(Mutex::new(Some(code_sender))),
+			state: Arc::clone(&state_rc),
+			response_gen: Arc::clone(&response_gen),
+		});
+
 		// Create a code value that is optional but should be set eventually
-		let code: RefCell<Result<String, InstalledAppError>> = RefCell::new(Err(InstalledAppError::NeverRecieved));
-		
+		let code: Arc<Mutex<Result<String, InstalledAppError>>> = Arc::new(Mutex::new(Err(InstalledAppError::NeverRecieved)));
+		let code_clone = Arc::clone(&code);
+
 		// When the code_reciever oneshot resolves, set the new_code value.
-		let finish = code_reciever.then(|new_code| -> Result<(), ()> {
+		let finish = code_reciever.then(move |new_code| {
+			let code = code_clone;
 			if let Ok(new_code) = new_code {
 				match new_code {
 					Ok(new_code) => {
-						*code.borrow_mut() = Ok(new_code);
+						*code.lock().unwrap() = Ok(new_code);
 						Ok(())
 					}
 					Err(e) => {
-						*code.borrow_mut() = Err(e);
+						*code.lock().unwrap() = Err(e);
 						Err(())
 					}
 				}
@@ -311,42 +278,33 @@ impl OAuth {
 				Err(())
 			}
 		});
-		
+
+		let graceful = server.with_graceful_shutdown(finish).map_err(|e| eprintln!("Server failed: {}", e));
+
 		// Run the server until the code future oneshot resolves and has set the code variable.
-		server.run_until(finish)?;
-		
+		hyper::rt::run(graceful);
+
 		// Make sure we got the code. Return an error if we didn't.
-		let code = match *code.borrow() {
+		let code = match *code.lock().unwrap() {
 			Ok(ref new_code) => new_code.clone(),
 			Err(ref e) => return Err(e.clone().into()),
 		};
-		
+
 		// Get the access token with the new code we just got
 		let mut params: HashMap<&str, &str> = HashMap::new();
 		params.insert("grant_type", "authorization_code");
 		params.insert("code", &code);
 		params.insert("redirect_uri", &redirect);
-		
+
 		// Request for the access token
-		let mut tokenreq = Request::new(
-			Method::Post,
-			"https://ssl.reddit.com/api/v1/access_token/.json".parse()?,
-		); // httpS is important
-		tokenreq.set_body(body_from_map(&params));
-		tokenreq.headers_mut().set(Authorization(Basic {
-			username: id.to_string(),
-			password: None,
-		}));
-		
+		let mut tokenreq = Request::builder().method(Method::POST).uri("https://ssl.reddit.com/api/v1/access_token/.json").body(body_from_map(&params)).unwrap();
+		// httpS is important
+		tokenreq.headers_mut().insert(header::AUTHORIZATION, HeaderValue::from_str(&format!("Basic {}", base64::encode(&format!("{}:", id)))).unwrap());
+
 		// Send the request and get the access token as a response
 		let response = conn.run_request(tokenreq)?;
-		
-		if let (Some(expires_in), Some(token), Some(refresh_token), Some(scope)) = (
-			response.get("expires_in"),
-			response.get("access_token"),
-			response.get("refresh_token"),
-			response.get("scope"),
-		) {
+
+		if let (Some(expires_in), Some(token), Some(refresh_token), Some(scope)) = (response.get("expires_in"), response.get("access_token"), response.get("refresh_token"), response.get("scope")) {
 			let expires_in = expires_in.as_u64().unwrap();
 			let token = token.as_str().unwrap();
 			let refresh_token = refresh_token.as_str().unwrap();
@@ -356,16 +314,13 @@ impl OAuth {
 				redirect: redirect.to_string(),
 				token: RefCell::new(token.to_string()),
 				refresh_token: RefCell::new(Some(refresh_token.to_string())),
-				expire_instant: Cell::new(Some(
-					Instant::now() + Duration::new(expires_in.to_string().parse::<u64>().unwrap(), 0),
-				)),
+				expire_instant: Cell::new(Some(Instant::now() + Duration::new(expires_in.to_string().parse::<u64>().unwrap(), 0))),
 			})
 		} else {
 			Err(Error::from(RedditError::AuthError))
 		}
 	}
 }
-
 
 /// A struct representing scopes that an installed app can request permission for.
 /// To use, create an instance of the struct and set the fields you want to use to true.
@@ -440,7 +395,7 @@ impl Scopes {
 			account: false,
 		}
 	}
-	
+
 	/// Create a scopes instance with all permissions requested
 	pub fn all() -> Scopes {
 		Scopes {
@@ -466,7 +421,7 @@ impl Scopes {
 			account: true,
 		}
 	}
-	
+
 	/// Convert the struct to a string representation to be sent to Reddit
 	fn to_string(&self) -> String {
 		let mut string = String::new();
@@ -530,7 +485,7 @@ impl Scopes {
 		if self.account {
 			string.push_str(",account");
 		}
-		
+
 		string
 	}
 }
@@ -555,29 +510,26 @@ pub enum InstalledAppError {
 	NeverRecieved,
 }
 
-// The struct that creates new InstalledAppServices when necessary. Basically the same thing as the
-// InstalledAppService, not sure why it's even necessary but I'm too scared to touch it now.
-struct NewInstalledAppService {
-	sender: RefCell<Option<Sender<Result<String, InstalledAppError>>>>,
-	state: String,
+struct MakeInstalledAppService {
+	code_sender: CodeSender,
+	state: Arc<String>,
 	response_gen: Arc<ResponseGenFn>,
 }
 
-impl NewService for NewInstalledAppService {
-	type Request = Request;
-	type Response = Response;
-	type Error = HyperError;
+impl<Ctx> MakeService<Ctx> for MakeInstalledAppService {
+	type ReqBody = Body;
+	type ResBody = Body;
+	type Error = hyper::Error;
+	type Service = InstalledAppService;
+	type Future = Box<Future<Item = Self::Service, Error = Self::MakeError> + Send + Sync>;
+	type MakeError = Box<dyn std::error::Error + Send + Sync>;
 
-	type Instance = InstalledAppService;
-
-	fn new_service(&self) -> Result<Self::Instance, std::io::Error> {
-		let code_sender = RefCell::new(self.sender.pop());
-
-		Ok(InstalledAppService {
-			code_sender,
-			state: self.state.clone(),
+	fn make_service(&mut self, _ctx: Ctx) -> Self::Future {
+		Box::new(futures::future::ok(InstalledAppService {
+			code_sender: Arc::clone(&self.code_sender),
+			state: Arc::clone(&self.state),
 			response_gen: Arc::clone(&self.response_gen),
-		})
+		}))
 	}
 }
 
@@ -585,87 +537,60 @@ impl NewService for NewInstalledAppService {
 // that this is the right authorization instance, the optional responses, and a tokio Core needed to
 // clone the responses.
 struct InstalledAppService {
-	code_sender: RefCell<Option<Sender<Result<String, InstalledAppError>>>>,
-	state: String,
+	code_sender: CodeSender,
+	state: Arc<String>,
 	response_gen: Arc<ResponseGenFn>,
 }
 
 impl Service for InstalledAppService {
-	type Request = Request;
-	type Response = Response;
+	type ReqBody = Body;
+	type ResBody = Body;
 	type Error = HyperError;
+	type Future = Box<Future<Item = Response<Self::ResBody>, Error = Self::Error> + Send>;
 
-	type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
-
-	fn call(&self, req: Request) -> Self::Future {
+	fn call(&mut self, req: Request<Self::ReqBody>) -> Self::Future {
 		// Get the data from the request (the state and the code, or the error) in a HashMap
-		let query_str = req.uri().as_ref();
+		let query_str = req.uri().path_and_query().unwrap().as_str();
 		let query_str = &query_str[2..query_str.len()];
 		let params: HashMap<_, _> = url::form_urlencoded::parse(query_str.as_bytes()).collect();
 
-		// Get the response from a Result<Response, Response> and log an error when a response is
-		// failed.
-		fn split(res: Result<Response, Response>) -> Response {
-			match res {
-				Ok(t) => t,
-				Err(t) => {
-					error!("User's closure generated an error response {:?}", t);
-					t
-				}
-			}
-		}
-
 		// Create a HTTP response based on the result of the code retrieval, the code sender, and the
 		// response generator.
-		fn create_res(gen: &ResponseGenFn, res: Result<String, InstalledAppError>, sender: &RefCell<Option<Sender<Result<String, InstalledAppError>>>>) -> Box<Future<Item = Response, Error = HyperError>> {
-			let resp = if let Some(sender) = sender.pop() {
-				let resp = gen(res.clone());
-				sender.send(res).unwrap();
-				resp
+		fn create_res(gen: &ResponseGenFn, res: &Result<String, InstalledAppError>, sender: &CodeSender) -> <InstalledAppService as Service>::Future {
+			let mut sender = sender.lock().unwrap();
+			let sender = if let Some(sender) = sender.take() {
+				sender
 			} else {
-				gen(Err(InstalledAppError::AlreadyRecieved))
+				return Box::new(ok(gen(&Err(InstalledAppError::AlreadyRecieved))));
 			};
-			Box::new(ok(split(resp)))
+			let resp = match sender.send(res.clone()) {
+				Ok(_) => gen(&res),
+				Err(_) => gen(&Err(InstalledAppError::AlreadyRecieved)),
+			};
+			Box::new(ok(resp))
 		}
 
 		// If there was an error stop here, returning the error response
 		if params.contains_key("error") {
 			warn!("Got failed authorization. Error was {}", &params["error"]);
-			let err = InstalledAppError::Error {
-				msg: params["error"].to_string(),
-			};
-			create_res(&*self.response_gen, Err(err.clone()), &self.code_sender)
+			let err = InstalledAppError::Error { msg: params["error"].to_string() };
+			create_res(&*self.response_gen, &Err(err.clone()), &self.code_sender)
 		} else {
 			// Get the state if it exists
 			let state = if let Some(state) = params.get("state") {
 				state
 			} else {
 				// Return error response if we didn't get the state
-				return create_res(
-					&*self.response_gen,
-					Err(InstalledAppError::MismatchedState),
-					&self.code_sender,
-				);
+				return create_res(&*self.response_gen, &Err(InstalledAppError::MismatchedState), &self.code_sender);
 			};
 			// Error if the state doesn't match
-			if *state != self.state {
-				error!(
-					"State didn't match. Got state \"{}\", needed state \"{}\"",
-					state, self.state
-				);
-				create_res(
-					&*self.response_gen,
-					Err(InstalledAppError::MismatchedState),
-					&self.code_sender,
-				)
+			if *state != *self.state {
+				error!("State didn't match. Got state \"{}\", needed state \"{}\"", state, self.state);
+				create_res(&*self.response_gen, &Err(InstalledAppError::MismatchedState), &self.code_sender)
 			} else {
 				// Get the code and send it with the oneshot sender back to the main thread
 				let code = &params["code"];
-				create_res(
-					&*self.response_gen,
-					Ok(code.clone().into()),
-					&self.code_sender,
-				)
+				create_res(&*self.response_gen, &Ok(code.clone().into()), &self.code_sender)
 			}
 		}
 	}

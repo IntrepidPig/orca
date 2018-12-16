@@ -1,13 +1,13 @@
-mod listing;
 mod comments;
-mod sub;
-mod user;
+mod listing;
 mod post;
+mod sub;
 mod thing;
+mod user;
 
-pub use self::listing::*;
 pub use self::comments::*;
-pub use self::sub::*;
-pub use self::user::*;
+pub use self::listing::*;
 pub use self::post::*;
+pub use self::sub::*;
 pub use self::thing::*;
+pub use self::user::*;

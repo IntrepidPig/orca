@@ -22,7 +22,7 @@ fn main() {
 	let password = input("Password: ");
 	let id = input("Client id: ");
 	let secret = input("Client secret: ");
-	
+
 	let mut reddit = App::new("orca_script_example", "1.0", "/u/IntrepidPig").unwrap();
 	reddit.authorize_script(&id, &secret, &username, &password).unwrap();
 

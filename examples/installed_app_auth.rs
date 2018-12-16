@@ -7,7 +7,7 @@ extern crate orca;
 
 use orca::{App, InstalledAppError, ResponseGenFn, Scopes};
 
-use hyper::Response;
+use hyper::{Body, Response};
 
 fn input(query: &str) -> String {
 	use std::io::Write;
@@ -27,15 +27,15 @@ fn main() {
 	let response_gen: Option<std::sync::Arc<ResponseGenFn>> = Some(std::sync::Arc::new(|result| match result {
 		Ok(_code) => {
 			println!("Authorized successfully");
-			Ok(Response::new().with_body("Congratulations! You authorized successfully"))
+			Response::new(Body::from("Congratulations! You authorized successfully"))
 		}
 		Err(_e) => {
 			println!("Authorization error");
-			Ok(Response::new().with_body("Sorry! There was an error with the authorization."))
+			Response::new(Body::from("Sorry! There was an error with the authorization."))
 		}
 	}));
 	let scopes = Scopes::all();
-	
+
 	let mut reddit = App::new("orca_installed_app_example", "1.0", "/u/IntrepidPig").unwrap();
 	reddit.authorize_installed_app(&id, &redirect, response_gen, &scopes).unwrap();
 

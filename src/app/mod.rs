@@ -1,13 +1,13 @@
-mod listings;
-mod links;
-mod messages;
-mod auth;
-mod users;
 mod account;
+mod auth;
+mod links;
+mod listings;
+mod messages;
+mod users;
 
 use failure::Error;
 
-use net::{LimitMethod, Connection};
+use net::{Connection, LimitMethod};
 
 /// A reddit object
 /// ## Usage:
@@ -25,11 +25,9 @@ impl App {
 	/// # Returns
 	/// A new reddit object
 	pub fn new(appname: &str, appversion: &str, appauthor: &str) -> Result<App, Error> {
-		Ok(App {
-			conn: Connection::new(appname, appversion, appauthor)?,
-		})
+		Ok(App { conn: Connection::new(appname, appversion, appauthor)? })
 	}
-	
+
 	/// Sets the method to use for ratelimiting.
 	/// # Arguments
 	/// * `limit` - The method to use for ratelimiting

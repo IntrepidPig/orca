@@ -23,17 +23,11 @@ impl<'a> Comments<'a> {
 		let cache: VecDeque<Comment> = VecDeque::new();
 		let last = None;
 
-		Comments {
-			sub: sub.to_string(),
-			cache,
-			last,
-			app,
-		}
+		Comments { sub: sub.to_string(), cache, last, app }
 	}
 
 	fn refresh(&mut self, app: &App) {
-		let mut resp = app.get_recent_comments(&self.sub, Some(500), self.last.clone())
-			.expect("Could not get recent comments");
+		let mut resp = app.get_recent_comments(&self.sub, Some(500), self.last.as_ref().map(|s| s.as_str())).expect("Could not get recent comments");
 
 		if let Some(comment) = resp.by_ref().peekable().peek() {
 			self.last = Some(comment.name.clone());

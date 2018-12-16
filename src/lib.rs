@@ -69,6 +69,7 @@ extern crate hyper;
 extern crate hyper_tls;
 #[macro_use]
 extern crate log;
+extern crate base64;
 extern crate open;
 extern crate rand;
 extern crate serde;
@@ -91,8 +92,8 @@ pub mod errors;
 /// Main entry point
 pub mod app;
 
-pub use net::auth::{self, InstalledAppError, ResponseGenFn, Scopes};
-pub use net::{Connection, LimitMethod};
+pub use app::App;
 pub use data::{Sort, SortTime};
 pub use errors::RedditError;
-pub use app::App;
+pub use net::auth::{self, InstalledAppError, ResponseGenFn, Scopes};
+pub use net::{Connection, LimitMethod};

@@ -1,5 +1,5 @@
 use failure::Error;
-use hyper::{Request, Method};
+use hyper::{Body, Request};
 use json::Value;
 
 use App;
@@ -11,11 +11,8 @@ impl App {
 	/// # Returns
 	/// A json value containing the user info
 	pub fn get_user(&self, name: &str) -> Result<Value, Error> {
-		let req = Request::new(
-			Method::Get,
-			format!("https://www.reddit.com/user/{}/about/.json", name).parse()?,
-		);
-		
+		let req = Request::get(format!("https://www.reddit.com/user/{}/about/.json", name)).body(Body::empty()).unwrap();
+
 		self.conn.run_request(req)
 	}
 }

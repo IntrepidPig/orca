@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use {App, ResponseGenFn, Scopes};
 use net::auth::OAuth;
+use {App, ResponseGenFn, Scopes};
 
 use failure::Error;
 
@@ -17,7 +17,7 @@ impl App {
 		self.conn.auth = Some(auth);
 		Ok(())
 	}
-	
+
 	/// Authorize this app as an installed app
 	/// # Arguments
 	/// * `conn` - A reference to the connection to authorize
@@ -30,8 +30,7 @@ impl App {
 	/// that an error occurred within the function.
 	/// * `scopes` - A reference to a Scopes instance representing the capabilites you are requesting
 	/// as an installed app.
-	pub fn authorize_installed_app<I: Into<Option<Arc<ResponseGenFn>>>>
-	(&mut self, id: &str, redirect: &str, response_gen: I, scopes: &Scopes) -> Result<(), Error> {
+	pub fn authorize_installed_app<I: Into<Option<Arc<ResponseGenFn>>>>(&mut self, id: &str, redirect: &str, response_gen: I, scopes: &Scopes) -> Result<(), Error> {
 		let auth = OAuth::create_installed_app(&self.conn, id, redirect, response_gen, scopes)?;
 		self.conn.auth = Some(auth);
 		Ok(())

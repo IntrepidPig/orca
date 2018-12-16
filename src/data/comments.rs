@@ -1,9 +1,9 @@
 use json;
 use json::Value;
 
-use failure::{err_msg, Error};
-use errors::ParseError;
 use data::{Listing, Thing};
+use errors::ParseError;
+use failure::{err_msg, Error};
 use App;
 
 /// An enum representing a thread which can either be a comment or a more object that represents
@@ -58,7 +58,10 @@ impl Thing for Comment {
 		// nice
 		macro_rules! out {
 			($val:ident) => {
-				return Err(Error::from(ParseError { thing_type: "Comment".to_string(), json: json::to_string_pretty($val).unwrap() }));
+				return Err(Error::from(ParseError {
+					thing_type: "Comment".to_string(),
+					json: json::to_string_pretty($val).unwrap(),
+				}));
 			};
 		}
 
@@ -123,12 +126,7 @@ impl Thing for Comment {
 		let replies: Listing<Comment> = match val["replies"] {
 			Value::String(_) => Listing::new(),
 			Value::Object(_) => Listing::from_value(&val["replies"]["data"]["children"], &link_id, app).unwrap(),
-			_ => {
-				return Err(err_msg(format!(
-					"Unexpected value for \"replies\": {}",
-					val["replies"]
-				)))
-			}
+			_ => return Err(err_msg(format!("Unexpected value for \"replies\": {}", val["replies"]))),
 		};
 
 		Ok(Comment {

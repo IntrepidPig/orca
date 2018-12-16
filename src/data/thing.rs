@@ -1,5 +1,5 @@
-use json;
 use failure::Error;
+use json;
 use App;
 
 /// A trait representing a reddit Thing that can be deserialized from JSON

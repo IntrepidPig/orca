@@ -1,17 +1,16 @@
 extern crate env_logger;
 
 use std::sync::{Arc, Once, ONCE_INIT};
-use std::time::Duration;
 use std::thread;
+use std::time::Duration;
 
+use hyper::{Body, Response};
 use log;
-use hyper::Response;
 
-use net::LimitMethod;
-use data::*;
-use *;
 use auth::OAuth;
-
+use data::*;
+use net::LimitMethod;
+use *;
 
 static ONCE: Once = ONCE_INIT;
 
@@ -40,14 +39,7 @@ fn source_env() -> Result<(String, String, String, String, String, String), ()> 
 	let installed_id = get_env("REDDIT_INSTALLED_ID");
 	let redirect = get_env("REDDIT_INSTALLED_REDIRECT");
 
-	Ok((
-		username,
-		password,
-		script_id,
-		secret,
-		installed_id,
-		redirect,
-	))
+	Ok((username, password, script_id, secret, installed_id, redirect))
 }
 
 fn init_reddit() -> App {
@@ -61,9 +53,7 @@ fn init_reddit() -> App {
 
 #[test(posts)]
 fn get_posts() {
-	init_reddit()
-		.get_posts("unixporn", Sort::Top(SortTime::All))
-		.unwrap();
+	init_reddit().get_posts("unixporn", Sort::Top(SortTime::All)).unwrap();
 }
 
 // Conflicts with the force_refresh test
@@ -73,17 +63,15 @@ fn installed_app_auth() {
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
 	let mut reddit = App::new("Orca Test Installed App", "v0.3.0", "/u/IntrepidPig").unwrap();
 	use net::auth::InstalledAppError;
-	let response_gen: Arc<ResponseGenFn> = Arc::new(
-		|res: Result<String, InstalledAppError>| -> Result<Response, Response> {
-			match res {
-				Ok(code) => Ok(Response::new().with_body("Congratulations! You have been authorized")),
-				Err(e) => Ok(Response::new().with_body(format!("ERROR: {}\n\nSorry for the inconvience", e))),
-			}
-		},
-	);
+	let response_gen: Arc<ResponseGenFn> = Arc::new(|res: &Result<String, InstalledAppError>| -> Response<Body> {
+		match res {
+			Ok(code) => Response::new(Body::from("Congratulations! You have been authorized")),
+			Err(e) => Response::new(Body::from(format!("ERROR: {}\n\nSorry for the inconvience", e))),
+		}
+	});
 	let mut scopes = Scopes::all();
 	scopes.submit = false;
-	
+
 	reddit.authorize_installed_app(&installed_id, &redirect, response_gen, &scopes).unwrap();
 	reddit.get_self().unwrap();
 	assert!(reddit.submit_self("test", "You shouldn't be seeing this", "Sorry if you do", false).is_err());
@@ -92,10 +80,7 @@ fn installed_app_auth() {
 #[test(sort)]
 fn post_sort() {
 	init_logging();
-	assert_eq!(
-		Sort::Top(SortTime::All).param(),
-		&[("sort", "top"), ("t", "all")]
-	)
+	assert_eq!(Sort::Top(SortTime::All).param(), &[("sort", "top"), ("t", "all")])
 }
 
 #[test(auth)]
@@ -116,10 +101,7 @@ fn other_info() {
 	let reddit = init_reddit();
 
 	let otherguy = reddit.get_user("DO_U_EVN_SPAGHETTI").unwrap();
-	info!(
-		"That one guy:\n{}",
-		json::to_string_pretty(&otherguy).unwrap()
-	);
+	info!("That one guy:\n{}", json::to_string_pretty(&otherguy).unwrap());
 }
 
 #[test(stream)]
@@ -149,10 +131,7 @@ fn comment_tree() {
 			for _ in 0..level {
 				print!("\t");
 			}
-			println!(
-				"{} by {} (parent: {})",
-				comment.id, comment.author, comment.parent_id
-			);
+			println!("{} by {} (parent: {})", comment.id, comment.author, comment.parent_id);
 			print_tree(comment.replies, level + 1);
 		}
 	};
@@ -217,28 +196,17 @@ fn load_post() {
 fn message() {
 	let reddit = init_reddit();
 
-	reddit
-		.message("intrepidpig", "please don't spam me", "oops")
-		.unwrap();
+	reddit.message("intrepidpig", "please don't spam me", "oops").unwrap();
 }
 
 #[test(submit)]
 fn test_post() {
-	println!(
-		"{}",
-		init_reddit()
-			.submit_self("pigasusland", "Test Post", "The time is dank-o-clock", true)
-			.unwrap()
-	);
+	println!("{}", init_reddit().submit_self("pigasusland", "Test Post", "The time is dank-o-clock", true).unwrap());
 }
 
 #[test(urlencode)]
 fn urlencode() {
-	println!(
-		"{}",
-		init_reddit()
-			.submit_self("pigasusland", "Tanks & Banks", "Will it work? Cheese & Rice", true)
-			.unwrap());
+	println!("{}", init_reddit().submit_self("pigasusland", "Tanks & Banks", "Will it work? Cheese & Rice", true).unwrap());
 }
 
 #[test(force_refresh)]
@@ -247,35 +215,38 @@ fn force_refresh() {
 	let (username, password, script_id, secret, installed_id, redirect) = source_env().unwrap();
 	let mut reddit = App::new("Orca Test Installed App", "v0.4.0", "/u/IntrepidPig").unwrap();
 	reddit.authorize_installed_app(&installed_id, &redirect, None, &Scopes::all()).unwrap();
-	
+
 	let auth = reddit.conn.auth.as_ref().unwrap();
 	let old_auth = auth.clone();
 	thread::sleep(Duration::new(2, 0));
 	auth.refresh(&reddit.conn).unwrap();
 	reddit.get_self().unwrap();
 	let new_auth = auth.clone();
-	
+
 	match (old_auth, new_auth) {
-		(OAuth::InstalledApp {
-			id: old_id,
-			redirect: old_redirect,
-			token: old_token,
-			refresh_token: old_refresh_token,
-			expire_instant: old_expire_instant,
-		}, OAuth::InstalledApp {
-			id: new_id,
-			redirect: new_redirect,
-			token: new_token,
-			refresh_token: new_refresh_token,
-			expire_instant: new_expire_instant,
-		}) => {
+		(
+			OAuth::InstalledApp {
+				id: old_id,
+				redirect: old_redirect,
+				token: old_token,
+				refresh_token: old_refresh_token,
+				expire_instant: old_expire_instant,
+			},
+			OAuth::InstalledApp {
+				id: new_id,
+				redirect: new_redirect,
+				token: new_token,
+				refresh_token: new_refresh_token,
+				expire_instant: new_expire_instant,
+			},
+		) => {
 			assert_eq!(old_id, new_id);
 			assert_eq!(old_redirect, new_redirect);
 			assert_ne!(old_token, new_token);
 			assert_eq!(old_refresh_token, new_refresh_token);
 			assert_ne!(old_expire_instant, new_expire_instant);
-		},
-		_ => panic!("Got unmatching authorization types")
+		}
+		_ => panic!("Got unmatching authorization types"),
 	}
 }
 
@@ -287,21 +258,41 @@ fn auto_refresh() {
 	let mut reddit = App::new("Orca Test Installed App", "v0.4.0", "/u/IntrepidPig").unwrap();
 	reddit.authorize_installed_app(&installed_id, &redirect, None, &Scopes::all()).unwrap();
 	reddit.get_self().unwrap();
-	
+
 	thread::sleep(Duration::new(60 * 60 + 60, 0)); // Wait a little over an hour
 	let mut first = true;
-	reddit.get_self().unwrap_or_else(|_| { first = false; json::Value::Null } );
+	reddit.get_self().unwrap_or_else(|_| {
+		first = false;
+		json::Value::Null
+	});
 	let mut second = true;
-	reddit.get_self().unwrap_or_else(|_| { second = false; json::Value::Null } );
-	
+	reddit.get_self().unwrap_or_else(|_| {
+		second = false;
+		json::Value::Null
+	});
+
 	thread::sleep(Duration::new(60 * 60 + 60, 0)); // Wait a little over an hour
 	let mut third = true;
-	reddit.get_self().unwrap_or_else(|_| { third = false; json::Value::Null } );
+	reddit.get_self().unwrap_or_else(|_| {
+		third = false;
+		json::Value::Null
+	});
 	let mut fourth = true;
-	reddit.get_self().unwrap_or_else(|_| { fourth = false; json::Value::Null } );
-	
-	fn bs(b: bool) -> &'static str { if b { "Success" } else { "Failure" } }
-	
+	reddit.get_self().unwrap_or_else(|_| {
+		fourth = false;
+		json::Value::Null
+	});
+
+	fn bs(b: bool) -> &'static str {
+		if b {
+			"Success"
+		} else {
+			"Failure"
+		}
+	}
+
 	println!("Tests:\n1: {}\n2: {}\n3: {}\n4: {}", bs(first), bs(second), bs(third), bs(fourth));
-	if !(first && second && third && fourth) { panic!("Test failed") }
+	if !(first && second && third && fourth) {
+		panic!("Test failed")
+	}
 }

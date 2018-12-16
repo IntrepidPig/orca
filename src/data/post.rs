@@ -1,7 +1,7 @@
-use json::{self, Value};
-use errors::ParseError;
 use data::{Comment, Listing, Thing};
+use errors::ParseError;
 use failure::Error;
+use json::{self, Value};
 use App;
 
 /// A struct that represents a submission to reddit
@@ -39,7 +39,10 @@ impl Thing for Post {
 
 		macro_rules! out {
 			($val:ident) => {
-				return Err(Error::from(ParseError { thing_type: "Post".to_string(), json: json::to_string_pretty($val).unwrap() }));
+				return Err(Error::from(ParseError {
+					thing_type: "Post".to_string(),
+					json: json::to_string_pretty($val).unwrap(),
+				}));
 			};
 		}
 
