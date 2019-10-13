@@ -2,43 +2,62 @@
 //!
 //! This example requires registering the app as an installed app at [Reddit](https://www.reddit.com/prefs/apps)
 
-extern crate hyper;
-extern crate orca;
+use std::{
+	env
+};
 
-use orca::{App, InstalledAppError, ResponseGenFn, Scopes};
+use orca::{
+	Reddit,
+	net::{
+		auth::{Scopes, InstalledAppError},
+	}
+};
 
-use hyper::{Body, Response};
-
-fn input(query: &str) -> String {
-	use std::io::Write;
-	let stdin = std::io::stdin();
-	print!("{}", query);
-	std::io::stdout().flush().unwrap();
-	let mut input = String::new();
-	stdin.read_line(&mut input).unwrap();
-	input.trim().to_string()
+fn var(name: &str) -> String {
+	env::var(name).expect(&format!("{} must be set", name))
 }
 
-fn main() {
-	println!("Please enter the requested information");
-	let id = input("App id: ");
-	let redirect = input("Redirect URI: ");
-	// If you don't want to deal with custom response generation you can just set this to None to have simple defaults
-	let response_gen: Option<std::sync::Arc<ResponseGenFn>> = Some(std::sync::Arc::new(|result| match result {
-		Ok(_code) => {
-			println!("Authorized successfully");
-			Response::new(Body::from("Congratulations! You authorized successfully"))
-		}
-		Err(_e) => {
-			println!("Authorization error");
-			Response::new(Body::from("Sorry! There was an error with the authorization."))
-		}
-	}));
+#[tokio::main]
+async fn main() {
+	env_logger::init().unwrap();
+	
+	let id = var("ORCA_EXAMPLE_REDDIT_INSTALLED_APP_ID");
+	let redirect = var("ORCA_EXAMPLE_REDDIT_INSTALLED_APP_REDIRECT");
+	
+	let response_gen: std::sync::Arc<dyn Fn(&Result<(), InstalledAppError>) -> hyper::Response<hyper::Body> + Send + Sync> = std::sync::Arc::new(|result| {
+		let msg = match result {
+			Ok(()) => "Woot! Successfully authorized",
+			Err(InstalledAppError::AlreadyRecieved) => "Already authorized somewhere else",
+			Err(InstalledAppError::MismatchedState) => "The states did not match",
+			Err(InstalledAppError::NeverRecieved) => "Failed to authorize",
+			Err(InstalledAppError::Error {
+				msg: _msg,
+			}) => {
+				"The request was not authorized"
+			},
+		};
+		
+		hyper::Response::builder()
+			.status(hyper::StatusCode::FORBIDDEN)
+			.header(
+				hyper::header::CONTENT_TYPE,
+				hyper::header::HeaderValue::from_str("text/html").unwrap(),
+			)
+			.body(hyper::Body::from(format!("<h2>{}</h2>", msg)))
+			.unwrap()
+	});
+	
 	let scopes = Scopes::all();
 
-	let mut reddit = App::new("orca_installed_app_example", "1.0", "/u/IntrepidPig").unwrap();
-	reddit.authorize_installed_app(&id, &redirect, response_gen, &scopes).unwrap();
+	let reddit = Reddit::new("linux", "orca_installed_app_example", "0.0", "/u/IntrepidPig").unwrap();
+	reddit.authorize_installed_app(id, redirect, Some(response_gen), scopes).await.unwrap();
 
-	let user = reddit.get_self().unwrap();
-	println!("Got data: {}", user);
+	let user_req = hyper::Request::builder()
+		.method(hyper::Method::GET)
+		.uri("https://oauth.reddit.com/api/v1/me/.json")
+		.body(hyper::Body::empty())
+		.unwrap();
+	
+	let user: json::Value = reddit.json_request(user_req).await.unwrap();
+	println!("{}", json::to_string_pretty(&user).unwrap());
 }

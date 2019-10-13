@@ -1,613 +1,476 @@
 //! # Authorization
-//! Authorization for a Reddit client is done by OAuth, which can be done multiple (3) ways. The
-//! possible methods of authorization are Script, Installed App, and Web App. Currently, only
-//! the first two are supported by orca. There are certain use cases for each app type.
-//!
-//! ## Scripts
-//!
-//! Script apps are used when you only want to authorize one user, that you own. This is the app
-//! type used for bots. It's special because it can keep a secret (secrets can be stored on the
-//! with the client). To create a script app, you first have to register it at
-//! [https://www.reddit.com/prefs/apps](https://www.reddit.com/prefs/apps). Make sure you're logged
-//! in as the user you want the script to authorize as when you register the app. At the bottom of
-//! the page, click "Create New App", and fill in the name, select script type, enter a short
-//! description (that will only be seen by you), leave the about url empty, and set the redirect uri
-//! to `https://www.example.com`. (We do this because this field is only necessary for installed
-//! apps but is required to be filled in anyway.)
-//!
-//! Once you create the app, a box should pop up that has the name of your app, and then shortly
-//! below it a string of random characters. This is the id of the script. Then lower in the
-//! properties there should be a field called "secret" with another long string of characters. That
-//! is your app's secret.
-//!
-//! Once you have the id and secret, you can instantiate an `OAuthApp::Script` enum with the id and
-//! secret of the script and the username and password of the user that registered the app, and
-//! pass it into the `authorize` function of an `App` instance.
-//!
-//! ## Installed Apps
-//!
-//! Installed apps are used when you want your program to be able to be authorized as any user that
-//! is using it. They are unable to keep a secret, so it is more complicated to authorize them.
-//! An installed app has no secret id. Instead, it requires that the user visits a url to reddit.com
-//! containing info for authorization. After authorizing, reddit.com will redirect the web browser
-//! to the redirect uri specified during the app registration, with the tokens requested as
-//! parameters. The redirect uri is usually the loopback address with a custom port, and the app
-//! starts an HTTP server to recieve that request and the tokens included.
-//!
-//! Most of this work is implemented for you by orca. At the moment, there is some lacking in
-//! customizability, but that will hopefully change in the future. Currently, orca opens the
-//! reddit.com in the default browser using the `open` crate, and the redirect uri must always be
-//! 127.0.0.1:7878.
-//!
-//! To create an installed app, the process at first is similar to Script app types. Visit
-//! [https://www.reddit.com/prefs/apps](https://www.reddit.com/prefs/apps), and create a new app,
-//! this time with the installed type. Fill in the name, set it to installed app, fill in a short
-//! description (this time it's visible by anyone using your app), enter an about url if you want,
-//! and set the redirect uri to exactly `http://127.0.0.1:7878` (hopefully this will be customizable
-//! in the future).
-//!
-//! When you create this app, the id of the app will be shorly below the name in the box that comes
-//! upp. Now in you application code, create an `OAuthApp::InstalledApp` with the id of you app and
-//! the redirect uri exactly as you entered it when you registered the app. When you call the
-//! `authorize` function with this as a parameter, it will open a web browser with either a reddit
-//! login prompt, or if you are already logged in, a request for permission for your app. Once you
-//! click allow, the page should redirect to a simple display of the words `Authorization successful`.
-//! Hopefully this too will be customizable one day.
-//!
-//! Installed apps, unlike scripts, require periodic reauthorization, or will expire without the
-//! possibility of refreshing if a permanent duration wasn't requested. This should be done
-//! automatically by the `net::Connection` instance.
+//! 
+//! Orca currently allows API clients to authorize with Reddit in two ways: as a script, and as
+//! an installed app. For more info on these app types, see 
+//! [Reddit's documentation on them](https://github.com/reddit-archive/reddit/wiki/OAuth2-App-Types).
 
-use rand::{self, Rng};
-use std;
-use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::{
+	sync::{Arc, Mutex},
+	time::{Instant, Duration},
+	collections::{HashMap},
+	fmt,
+};
 
-use base64;
-use failure::Error;
-use futures::future::ok;
-use futures::sync::oneshot::{self, Sender};
-use futures::Future;
-use hyper::header::{self, HeaderValue};
-use hyper::server::Server;
-use hyper::service::{MakeService, Service};
-use hyper::{Body, Error as HyperError, Method, Request, Response};
-use open;
-use url::{self, Url};
+use hyper::{
+	header::{self, HeaderValue},
+	server::{Server},
+	service::{self},
+	Request, Response, Body, Method,
+};
+use url::{
+	form_urlencoded,
+};
+use snafu::Snafu;
+use futures::{
+	channel::{
+		oneshot::{self},
+	},
+};
 
-use errors::RedditError;
-use net::body_from_map;
-use net::Connection;
+use crate::{
+	Reddit, RedditError,
+};
 
-/// Function type that is passed into OAuthApp::InstalledApp to generate response from code retrieval.
-pub type ResponseGenFn = (Fn(&Result<String, InstalledAppError>) -> Response<Body>) + Send + Sync;
-
-type CodeSender = Arc<Mutex<Option<Sender<Result<String, InstalledAppError>>>>>;
-
-/// Enum representing OAuth information that has been aquired from authorization. This should only be
-/// used internally within orca.
+/// Holds info about the current authorization state of the Reddit instance
 #[derive(Debug, Clone)]
 pub enum OAuth {
-	/// Script app type
-	Script {
-		/// Id of the script
-		id: String,
-		/// Secret of the script
-		secret: String,
-		/// Username of the script user
-		username: String,
-		/// Password of the script user
-		password: String,
-		/// Token retrieved from script authorization
-		token: String,
-	},
-	/// Installed app type
-	InstalledApp {
-		/// Id of the installed app
-		id: String,
-		/// Redirect url of the installed app
-		redirect: String,
-		/// Token currently in use
-		token: RefCell<String>,
-		/// The refresh token (to be used to retrieve a new token once the current one expires).
-		/// Not present if temporary authorization was requested
-		refresh_token: RefCell<Option<String>>,
-		/// Instant when the current token expires
-		expire_instant: Cell<Option<Instant>>,
-	},
+	/// Info about a script app type
+	Script(ScriptOAuth),
+	/// Info about an installed app type
+	InstalledApp(InstalledAppOAuth),
 }
 
-impl OAuth {
-	/// Refreshes the token (only necessary for installed app types)
-	pub fn refresh(&self, conn: &Connection) -> Result<(), Error> {
-		match *self {
-			OAuth::Script { .. } => Ok(()),
-			OAuth::InstalledApp {
-				ref id,
-				redirect: ref _redirect,
-				ref token,
-				ref refresh_token,
-				ref expire_instant,
-			} => {
-				let old_refresh_token = if let Some(ref refresh_token) = *refresh_token.borrow() { refresh_token.clone() } else { return Err(RedditError::AuthError.into()) };
-				// Get the access token with the new code we just got
-				let mut params: HashMap<&str, &str> = HashMap::new();
-				params.insert("grant_type", "refresh_token");
-				params.insert("refresh_token", &old_refresh_token);
+/// Info about a script app's authorization state
+#[derive(Debug, Clone)]
+pub struct ScriptOAuth {
+	/// The method used for authorizing, useful for re-authorization
+	pub method: ScriptAuthMethod,
+	/// The current bearer token to be attached to requests to authorize
+	pub token: String,
+}
 
-				// Request for the access token
-				let mut tokenreq = Request::builder().method(Method::POST).uri("https://www.reddit.com/api/v1/access_token/.json").body(body_from_map(&params)).unwrap();
-				// httpS is important
-				tokenreq.headers_mut().insert(header::AUTHORIZATION, HeaderValue::from_str(&format!("Basic {}", { base64::encode(&format!("{}:", id)) })).unwrap());
+/// Info about an installed app's authorization state
+#[derive(Debug, Clone)]
+pub struct InstalledAppOAuth {
+	/// The id of the app as given by Reddit
+	pub id: String,
+	/// The redirect URL of the app exactly as it appears in Reddit
+	pub redirect: String,
+	/// The current bearer token to be attached to requests to authorize
+	pub token: String,
+	/// The token necessary to refresh the current access token
+	pub refresh_token: String,
+	/// The instant at which the current access token will be expired
+	pub expire_instant: Instant,
+}
 
-				// Send the request and get the access token as a response
-				let response = conn.run_request(tokenreq)?;
+/// Holds info about the current method of attempting a first authorization for a Reddit instance
+#[derive(Debug, Clone)]
+pub enum AuthMethod {
+	/// Info about authorization as a script app
+	Script(ScriptAuthMethod),
+	/// Info about authorization as an installed app
+	InstalledApp(InstalledAppAuthMethod),
+}
 
-				if let (Some(expires_in), Some(new_token), Some(scope)) = (response.get("expires_in"), response.get("access_token"), response.get("scope")) {
-					let expires_in = expires_in.as_u64().unwrap();
-					let new_token = new_token.as_str().unwrap();
-					let _scope = scope.as_str().unwrap();
-					*token.borrow_mut() = new_token.to_string();
-					expire_instant.set(Some(Instant::now() + Duration::new(expires_in.to_string().parse::<u64>().unwrap(), 0)));
+/// Info about authorization as a script app
+#[derive(Debug, Clone)]
+pub struct ScriptAuthMethod {
+	/// The id of the app as given by Reddit
+	pub id: String,
+	/// The secret of the app as given by Reddit
+	pub secret: String,
+	/// The username of the account to login as
+	pub username: String,
+	/// The password of the account to login as
+	pub password: String,
+}
 
-					Ok(())
-				} else {
-					Err(Error::from(RedditError::AuthError))
+/// Info about authorization as an installed app
+#[derive(Clone)]
+pub struct InstalledAppAuthMethod {
+	/// The id of the app as given by Reddit
+	pub id: String,
+	/// The redirect URL of the app exactly as it appears in Reddit
+	pub redirect: String,
+	/// Optional function to use to generate HTTP responses to requests to the redirect URL. If `None` is passed,
+	/// very basic defaults will be chosen. 
+	pub response_gen: Option<Arc<dyn Fn(&Result<(), InstalledAppError>) -> Response<Body> + Send + Sync + 'static>>,
+	/// The scopes the app is requesting permission for
+	pub scopes: Scopes,
+}
+
+impl fmt::Debug for InstalledAppAuthMethod {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		f.debug_struct("InstalledAppAuthMethod")
+			.field("id", &self.id)
+			.field("redirect", &self.redirect)
+			.field("response_gen", self.response_gen.as_ref().map(|_| &"Some(_)").unwrap_or(&"None"))
+			.field("scopes", &self.scopes)
+			.finish()
+	}
+}
+
+macro_rules! define_scopes {
+	($($scope:ident),* $(,)?) => {
+		#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+		/// All scopes possible
+		pub struct Scopes {
+			$(
+				///
+				pub $scope: bool,
+			)*
+		}
+		
+		impl Scopes {
+			/// No scopes chosen
+			pub fn empty() -> Self {
+				Self {
+					$(
+						$scope: false,
+					)*
 				}
+			}
+			
+			/// All scopes chosen
+			pub fn all() -> Self {
+				Self {
+					$(
+						$scope: true,
+					)*
+				}
+			}
+			
+			/// Create a new [`Scopes`](Scopes) object that includes only the scopes `self` and
+			/// `other` both have enabled.
+			pub fn and(self, other: Self) -> Self {
+				Self {
+					$(
+						$scope: self.$scope && other.$scope,
+					)*
+				}
+			}
+			
+			/// Create a new [`Scopes`](Scopes) object that includes the scopes that either `self`
+			/// or `other` have enabled.
+			pub fn or(self, other: Self) -> Self {
+				Self {
+					$(
+						$scope: self.$scope || other.$scope,
+					)*
+				}
+			}
+			
+			/// Convert this Scopes object to its comma-separated string representation as expected by Reddit
+			pub fn to_string(self) -> String {
+				let mut buf = String::new();
+				$(
+					if self.$scope {
+						buf.push_str(stringify!($scope));
+						buf.push_str(",");
+					}
+				)*
+				if !buf.is_empty() {
+					// Remove trailing comma
+					buf.pop().unwrap();
+				}
+				buf
 			}
 		}
 	}
+}
 
-	/// Authorize the app as a script
-	/// # Arguments
-	/// * `conn` - A refernce to the connection to authorize
-	/// * `id` - The app id registered on Reddit
-	/// * `secret` - The app secret registered on Reddit
-	/// * `username` - The username of the user to authorize as
-	/// * `password` - The password of the user to authorize as
-	pub fn create_script(conn: &Connection, id: &str, secret: &str, username: &str, password: &str) -> Result<OAuth, Error> {
-		// authorization paramaters to request
-		let mut params: HashMap<&str, &str> = HashMap::new();
-		params.insert("grant_type", "password");
-		params.insert("username", &username);
-		params.insert("password", &password);
+define_scopes!(
+	identity,
+	edit,
+	flair,
+	history,
+	modconfig,
+	modflair,
+	modlog,
+	modposts,
+	modwiki,
+	mysubreddits,
+	privatemessages,
+	read,
+	report,
+	save,
+	submit,
+	subscribe,
+	vote,
+	wikiedit,
+	wikiread,
+	account,
+);
 
-		// Request for the bearer token
-		let mut tokenreq = Request::builder().method(Method::POST).uri("https://ssl.reddit.com/api/v1/access_token/.json").body(body_from_map(&params)).unwrap();
-		// httpS is important
-		tokenreq.headers_mut().insert(header::AUTHORIZATION, HeaderValue::from_str(&format!("Basic {}", { base64::encode(&format!("{}:{}", id, secret)) })).unwrap());
-
-		// Send the request and get the bearer token as a response
-		let response = conn.run_request(tokenreq)?;
-
-		if let Some(token) = response.get("access_token") {
-			let token = token.as_str().unwrap().to_string();
-			Ok(OAuth::Script {
-				id: id.to_string(),
-				secret: secret.to_string(),
-				username: username.to_string(),
-				password: password.to_string(),
+impl Reddit {
+	/// Try to authorize this Reddit instance with the given method
+	pub async fn authorize(&self, method: AuthMethod) -> Result<(), RedditError> {
+		match method {
+			AuthMethod::Script(script) => {
+				let ScriptAuthMethod { id, secret, username, password } = script;
+				self.authorize_script(id, secret, username, password).await
+			},
+			AuthMethod::InstalledApp(installed) => {
+				let InstalledAppAuthMethod { id, redirect, response_gen, scopes } = installed;
+				self.authorize_installed_app(id, redirect, response_gen, scopes).await
+			}
+		}
+	}
+	
+	/// Try to authorize this Reddit instance as a script
+	/// 
+	/// ## Parameters
+	/// - `id`: The id of this script as given by Reddit
+	/// - `secret`: The secret of this script as given by Reddit
+	/// - `username`: The username of the account to login as
+	/// - `password`: The password of the account to login as
+	pub async fn authorize_script(&self, id: String, secret: String, username: String, password: String) -> Result<(), RedditError> {
+		let mut params = form_urlencoded::Serializer::new(String::new());
+		params.append_pair("grant_type", "password");
+		params.append_pair("username", &username);
+		params.append_pair("password", &password);
+		let params = params.finish();
+		let body = Body::from(params);
+		
+		let mut token_req = Request::builder()
+			.uri("https://ssl.reddit.com/api/v1/access_token/.json")
+			.method(Method::POST)
+			.header(
+				header::AUTHORIZATION,
+				HeaderValue::from_str(&format!("Basic {}", base64::encode(&format!("{}:{}", id, secret))))
+						.map_err(|_e| {
+							log::error!("Failed to create Authorization header");
+							RedditError::Unknown
+						})?
+			)
+			.body(body)
+			.map_err(|_e| {
+				log::error!("Failed to create token request");
+				RedditError::Unknown
+			})?;
+		self.add_user_agent_header(&mut token_req)?;
+		
+		let response_json: json::Value = self.json_raw_request(token_req).await?;
+		if let Some(token) = response_json.get("access_token") {
+			let token = token.as_str().unwrap().to_owned();
+			*self.auth.write().unwrap() = Some(OAuth::Script(ScriptOAuth {
+				method: ScriptAuthMethod {
+					id,
+					secret,
+					username,
+					password,
+				},
 				token,
-			})
+			}));
+			Ok(())
 		} else {
-			Err(RedditError::AuthError.into())
+			Err(RedditError::Unknown)
 		}
 	}
-
-	/// Authorize the app as an installed app
-	/// # Arguments
-	/// * `conn` - A reference to the connection to authorize
-	/// * `id` - The app id registered on Reddit
-	/// * `redirect` - The app redirect URI registered on Reddit
-	/// * `response_gen` - An optional function that generates a hyper Response to give to the user
-	/// based on the result of the authorization attempt. The signature is `(Result<String, InstalledAppError) -> Result<Response, Response>`.
-	/// The result passed in is either Ok with the code recieved, or Err with the error that occurred.
-	/// The value returned should usually be an Ok(Response), but you can return Err(Response) to indicate
-	/// that an error occurred within the function.
-	/// * `scopes` - A reference to a Scopes instance representing the capabilites you are requesting
-	/// as an installed app.
-	pub fn create_installed_app<I: Into<Option<Arc<ResponseGenFn>>>>(conn: &Connection, id: &str, redirect: &str, response_gen: I, scopes: &Scopes) -> Result<OAuth, Error> {
-		let response_gen = response_gen.into();
-		// Random state string to identify this authorization instance
-		let state = rand::thread_rng().gen_ascii_chars().take(16).collect::<String>();
-
-		let scopes = &scopes.to_string();
-		let browser_uri = format!(
-			"https://www.reddit.com/api/v1/authorize?client_id={}&response_type=code&\
-			 state={}&redirect_uri={}&duration=permanent&scope={}",
-			id, state, redirect, scopes
-		);
-
-		let state_rc = Arc::new(state);
-
-		// Open the auth url in the browser so the user can authenticate the app
-		thread::spawn(move || {
-			open::that(browser_uri).expect("Failed to open browser");
-		});
-
-		// A oneshot future channel that the hyper server has access to to send the code back
-		// to this thread.
-		let (code_sender, code_reciever) = oneshot::channel::<Result<String, InstalledAppError>>();
-
-		// Convert the redirect url into something parseable by the HTTP server
-		let redirect_url = Url::parse(&redirect)?;
-		let main_redirect = format!("{}:{}", redirect_url.host_str().unwrap_or("127.0.0.1"), redirect_url.port().unwrap_or(7878).to_string());
-
-		// Set the default response generator if necessary
-		let response_gen = if let Some(ref response_gen) = response_gen {
-			Arc::clone(response_gen)
-		} else {
-			Arc::new(|res: &Result<String, InstalledAppError>| -> Response<Body> {
-				match res {
-					Ok(_) => Response::new("Successfully got the code".into()),
-					Err(e) => Response::new(format!("{}", e).into()),
-				}
-			})
-		};
-
-		// Create a server with the instance of a NewInstalledAppService struct with the
-		// responses given, the oneshot sender and the generated state string
-		let server = Server::bind(&main_redirect.as_str().parse()?).serve(MakeInstalledAppService {
-			code_sender: Arc::new(Mutex::new(Some(code_sender))),
-			state: Arc::clone(&state_rc),
-			response_gen: Arc::clone(&response_gen),
-		});
-
-		// Create a code value that is optional but should be set eventually
-		let code: Arc<Mutex<Result<String, InstalledAppError>>> = Arc::new(Mutex::new(Err(InstalledAppError::NeverRecieved)));
-		let code_clone = Arc::clone(&code);
-
-		// When the code_reciever oneshot resolves, set the new_code value.
-		let finish = code_reciever.then(move |new_code| {
-			let code = code_clone;
-			if let Ok(new_code) = new_code {
-				match new_code {
-					Ok(new_code) => {
-						*code.lock().unwrap() = Ok(new_code);
-						Ok(())
+	
+	/// Tries to authorize the current Reddit instance as an installed app.
+	/// 
+	/// ## Parameters
+	/// - `id`: The id of the app as given by Reddit
+	/// - `redirect`: The redirect URL exactly as specified on Reddit
+	/// - `response_gen`: Optional function to use to generate HTTP responses to requests to the redirect URL. If `None` is passed,
+	/// very basic defaults will be chosen.
+	/// - `scopes`: The scopes the app is requesting permission for
+	pub async fn authorize_installed_app(
+		&self,
+		id: String,
+		redirect: String,
+		response_gen: Option<Arc<dyn Fn(&Result<(), InstalledAppError>) -> Response<Body> + Send + Sync + 'static>>,
+		scopes: Scopes,
+	) -> Result<(), RedditError> {
+		use rand::Rng;
+		
+		let state = (0..16).map(|_| rand::thread_rng().sample(rand::distributions::Alphanumeric)).collect::<String>();		
+		let scopes_str = scopes.to_string();
+		let mut params = form_urlencoded::Serializer::new(String::new());
+		params.append_pair("client_id", &id);
+		params.append_pair("response_type", "code");
+		params.append_pair("state", &state);
+		params.append_pair("redirect_uri", &redirect);
+		params.append_pair("duration", "permanent"); // TODO allow temporary
+		params.append_pair("scope", &scopes_str);
+		let params = params.finish();
+		let browser_uri = format!("https://www.reddit.com/api/v1/authorize?{}", params);
+		let state = Arc::new(state);
+		
+		// This process should probably be customizable by the API client, like `response_gen`.
+		std::thread::spawn(move || open::that(browser_uri).expect("Failed to open browser"));
+		
+		// Create oneshot futures channels representing the code retrieval process and the shutdown signal for the server.
+		// The senders are wrapped in Arc<Mutex<Option<T>>> so that each hyper service can have access to them, and the
+		// first service to recieve the code will take ownership of and signal each of them.
+		let (code_tx, code_rx) = oneshot::channel::<String>();
+		let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+		let code_tx = Arc::new(Mutex::new(Some(code_tx)));
+		let shutdown_tx = Arc::new(Mutex::new(Some(shutdown_tx)));
+		
+		// Set the default response generator to a very basic one.
+		let response_gen = response_gen
+			.unwrap_or_else(|| {
+				Arc::new(|res: &Result<(), InstalledAppError>| -> Response<Body> {
+					match res {
+						Ok(_) => Response::new(Body::from("Successfully authorized")),
+						Err(e) => Response::new(format!("Failed to authorize app: {}", e).into()), // TODO
 					}
-					Err(e) => {
-						*code.lock().unwrap() = Err(e);
-						Err(())
-					}
+				})
+			});
+		
+		// Format the redirect URL in a way that `Server::bind` understands.
+		let redirect_url = url::Url::parse(&redirect)
+			.map_err(|_| RedditError::Unknown)?;
+		let main_redirect = format!("{}:{}", redirect_url.host_str().unwrap_or("127.0.0.1"), redirect_url.port().unwrap_or(7878));
+		
+		// Start the server that listens on the redirect URL for redirects from Reddit that will hopefully contain the code, but may
+		// contain the message that the user declined to authorize the app or some other error occurred.
+		let server
+			= Server::bind(&main_redirect.as_str().parse().map_err(|_| RedditError::Unknown)?)
+			.serve(service::make_service_fn(|_target| {
+				// Clone all the necessary Arcs for each service
+				let response_gen = Arc::clone(&response_gen);
+				let code_tx = Arc::clone(&code_tx);
+				let shutdown_tx = Arc::clone(&shutdown_tx);
+				let state = Arc::clone(&state);
+				async move {
+					Ok::<_, Box<dyn std::error::Error + Send + Sync>>(service::service_fn(move |req: Request<Body>| {
+						// Clone all the necessary Arcs for each service (again, tbh I don't understand how this works)
+						let response_gen = Arc::clone(&response_gen);
+						let shutdown_tx = Arc::clone(&shutdown_tx);
+						let code_tx = code_tx.clone();
+						let state = Arc::clone(&state);
+						async move {
+							// Parse the parameters of the redirect request
+							let params = form_urlencoded::parse(req.uri().query().unwrap().as_bytes()).collect::<HashMap<_, _>>();
+							
+							// Create a result that represents the state of the authorization based on this redirect.
+							let result = if params.contains_key("error") {
+								// This is most likely because the user declined to authorize the app. Too many scopes requested?
+								log::warn!("Got failed authorization: Error was: '{}'", params["error"]);
+								Err(InstalledAppError::Error {
+									msg: params["error"].as_ref().to_owned(),
+								})
+							} else {
+								let received_state = &params["state"];
+								if *received_state != *state {
+									// The states didn't match up, meaning the redirect was from a different authorization
+									// request.
+									Err(InstalledAppError::MismatchedState)
+								} else {
+									// The code was successfully recieved at this point.
+									let code = &params["code"];
+									// Consume the shared code and shutdown signal futures and signal them.
+									let mut code_tx_opt = code_tx.lock().unwrap();
+									let mut shutdown_tx_opt = shutdown_tx.lock().unwrap();
+									if let (Some(code_tx), Some(shutdown_tx)) = (code_tx_opt.take(), shutdown_tx_opt.take()) {
+										// Send the code to the external future.
+										code_tx.send(code.as_ref().to_owned()).unwrap();
+										// Signal the shutdown of the server, from inside the server!
+										shutdown_tx.send(()).unwrap();
+										// Success
+										Ok(())
+									} else {
+										// The server has already recieved another successful redirect with a valid code. This is
+										// an unlikely error and can probably be safely ignored. The server will likely shutdown soon
+										// after anyway if it has already recieved a shutdown signal.
+										Err(InstalledAppError::AlreadyRecieved)
+									}
+								}
+							};
+							
+							// Generate the approprate HTTP response to the result using the response generator and return it
+							let response = (*response_gen)(&result);
+							Ok::<_, Box<dyn std::error::Error + Send + Sync>>(response)
+						}
+					}))
 				}
-			} else {
-				Err(())
+			}))
+			.with_graceful_shutdown(async {
+				// Close server if the shutdown signal sender is activated or cancelled
+				let _ = shutdown_rx.await;
+				()
+			});
+		
+		match server.await {
+			Ok(_) => {},
+			Err(e) => {
+				log::error!("Server did not shut down successfully: {}", e);
 			}
-		});
-
-		let graceful = server.with_graceful_shutdown(finish).map_err(|e| eprintln!("Server failed: {}", e));
-
-		// Run the server until the code future oneshot resolves and has set the code variable.
-		hyper::rt::run(graceful);
-
-		// Make sure we got the code. Return an error if we didn't.
-		let code = match *code.lock().unwrap() {
-			Ok(ref new_code) => new_code.clone(),
-			Err(ref e) => return Err(e.clone().into()),
-		};
-
-		// Get the access token with the new code we just got
-		let mut params: HashMap<&str, &str> = HashMap::new();
-		params.insert("grant_type", "authorization_code");
-		params.insert("code", &code);
-		params.insert("redirect_uri", &redirect);
-
-		// Request for the access token
-		let mut tokenreq = Request::builder().method(Method::POST).uri("https://ssl.reddit.com/api/v1/access_token/.json").body(body_from_map(&params)).unwrap();
-		// httpS is important
-		tokenreq.headers_mut().insert(header::AUTHORIZATION, HeaderValue::from_str(&format!("Basic {}", base64::encode(&format!("{}:", id)))).unwrap());
-
-		// Send the request and get the access token as a response
-		let response = conn.run_request(tokenreq)?;
-
-		if let (Some(expires_in), Some(token), Some(refresh_token), Some(scope)) = (response.get("expires_in"), response.get("access_token"), response.get("refresh_token"), response.get("scope")) {
-			let expires_in = expires_in.as_u64().unwrap();
-			let token = token.as_str().unwrap();
-			let refresh_token = refresh_token.as_str().unwrap();
-			let _scope = scope.as_str().unwrap();
-			Ok(OAuth::InstalledApp {
-				id: id.to_string(),
-				redirect: redirect.to_string(),
-				token: RefCell::new(token.to_string()),
-				refresh_token: RefCell::new(Some(refresh_token.to_string())),
-				expire_instant: Cell::new(Some(Instant::now() + Duration::new(expires_in.to_string().parse::<u64>().unwrap(), 0))),
-			})
+		}
+		
+		let code_response = code_rx.await
+			.map_err(|_| RedditError::Unknown)?;
+		
+		// Now that we have the code that signifies that the user authorized the app, we have to use it to retrieve
+		// a token to authorize future requests with, as well as a refresh token needed to refresh the token every hour.
+		let mut params = form_urlencoded::Serializer::new(String::new());
+		params.append_pair("grant_type", "authorization_code");
+		params.append_pair("code", &code_response);
+		params.append_pair("redirect_uri", &redirect);
+		let params = params.finish();
+		
+		let mut request = Request::builder()
+			.method(Method::POST)
+			.uri("https://ssl.reddit.com/api/v1/access_token/.json")
+			.header(
+				header::AUTHORIZATION,
+				HeaderValue::from_str(&format!("Basic {}", base64::encode(&format!("{}:", id))))
+					.map_err(|_e| {
+						log::error!("Failed to create Authorization header");
+						RedditError::Unknown
+					})?,
+			)
+			.body(Body::from(params))
+			.map_err(|_| RedditError::Unknown)?;
+		self.add_user_agent_header(&mut request)?;
+		
+		let response: json::Value = self.json_raw_request(request).await?;
+		
+		if let (
+			Some(expires_in),
+			Some(token),
+			Some(refresh_token),
+			Some(_scope),
+		) = (
+			response.get("expires_in").and_then(|t| t.as_u64()),
+			response.get("access_token").and_then(|t| t.as_str()),
+			response.get("refresh_token").and_then(|t| t.as_str()),
+			response.get("scope").and_then(|t| t.as_str()),
+		) {
+			*self.auth.write().unwrap() = Some(OAuth::InstalledApp(InstalledAppOAuth {
+				id,
+				redirect,
+				token: token.to_owned(),
+				refresh_token: refresh_token.to_owned(),
+				expire_instant: Instant::now() + Duration::new(expires_in.to_string().parse::<u64>().unwrap(), 0),
+			}));
+			Ok(())
 		} else {
-			Err(Error::from(RedditError::AuthError))
+			Err(RedditError::Unknown)
 		}
-	}
-}
-
-/// A struct representing scopes that an installed app can request permission for.
-/// To use, create an instance of the struct and set the fields you want to use to true.
-///
-/// Note: In the field documentation, "the user" refers to the currently authorized user
-pub struct Scopes {
-	/// See detailed info about the user
-	pub identity: bool,
-	/// Edit posts of the user
-	pub edit: bool,
-	/// Flair posts of the user
-	pub flair: bool,
-	/// Unknown
-	pub history: bool,
-	/// Unknown
-	pub modconfig: bool,
-	/// Unknown
-	pub modflair: bool,
-	/// Unknown
-	pub modlog: bool,
-	/// Unknown
-	pub modposts: bool,
-	/// Unknown
-	pub modwiki: bool,
-	/// Unknown
-	pub mysubreddits: bool,
-	/// Unknown
-	pub privatemessages: bool,
-	/// Unknown
-	pub read: bool,
-	/// Report posts on behalf of the user
-	pub report: bool,
-	/// Save posts to the user's account
-	pub save: bool,
-	/// Submit posts on behalf of the user
-	pub submit: bool,
-	/// Unknown
-	pub subscribe: bool,
-	/// Vote on things on behalf of the user
-	pub vote: bool,
-	/// Unknown
-	pub wikiedit: bool,
-	/// Unknown
-	pub wikiread: bool,
-	/// Unknown
-	pub account: bool,
-}
-
-impl Scopes {
-	/// Create a scopes instance with no permissions requested
-	pub fn empty() -> Scopes {
-		Scopes {
-			identity: false,
-			edit: false,
-			flair: false,
-			history: false,
-			modconfig: false,
-			modflair: false,
-			modlog: false,
-			modposts: false,
-			modwiki: false,
-			mysubreddits: false,
-			privatemessages: false,
-			read: false,
-			report: false,
-			save: false,
-			submit: false,
-			subscribe: false,
-			vote: false,
-			wikiedit: false,
-			wikiread: false,
-			account: false,
-		}
-	}
-
-	/// Create a scopes instance with all permissions requested
-	pub fn all() -> Scopes {
-		Scopes {
-			identity: true,
-			edit: true,
-			flair: true,
-			history: true,
-			modconfig: true,
-			modflair: true,
-			modlog: true,
-			modposts: true,
-			modwiki: true,
-			mysubreddits: true,
-			privatemessages: true,
-			read: true,
-			report: true,
-			save: true,
-			submit: true,
-			subscribe: true,
-			vote: true,
-			wikiedit: true,
-			wikiread: true,
-			account: true,
-		}
-	}
-
-	/// Convert the struct to a string representation to be sent to Reddit
-	fn to_string(&self) -> String {
-		let mut string = String::new();
-		if self.identity {
-			string.push_str("identity");
-		}
-		if self.edit {
-			string.push_str(",edit");
-		}
-		if self.flair {
-			string.push_str(",flair");
-		}
-		if self.history {
-			string.push_str(",history");
-		}
-		if self.modconfig {
-			string.push_str(",modconfig");
-		}
-		if self.modflair {
-			string.push_str(",modflair");
-		}
-		if self.modlog {
-			string.push_str(",modlog");
-		}
-		if self.modposts {
-			string.push_str(",modposts");
-		}
-		if self.modwiki {
-			string.push_str(",modwiki");
-		}
-		if self.mysubreddits {
-			string.push_str(",mysubreddits");
-		}
-		if self.privatemessages {
-			string.push_str(",privatemessages");
-		}
-		if self.read {
-			string.push_str(",read");
-		}
-		if self.report {
-			string.push_str(",report");
-		}
-		if self.save {
-			string.push_str(",save");
-		}
-		if self.submit {
-			string.push_str(",submit");
-		}
-		if self.subscribe {
-			string.push_str(",subscribe");
-		}
-		if self.vote {
-			string.push_str(",vote");
-		}
-		if self.wikiedit {
-			string.push_str(",wikiedit");
-		}
-		if self.wikiread {
-			string.push_str(",wikiread");
-		}
-		if self.account {
-			string.push_str(",account");
-		}
-
-		string
 	}
 }
 
 /// Enum that contains possible errors from a request for the OAuth Installed App type.
-#[derive(Debug, Fail, Clone)]
+#[derive(Debug, Snafu, Clone)]
 pub enum InstalledAppError {
 	/// Got a generic error in the request
-	#[fail(display = "Got an unknown error: {}", msg)]
+	#[snafu(display("Got an unknown error: {}", msg))]
 	Error {
 		/// The message included in the error
 		msg: String,
 	},
 	/// The state string wasn't present or did not match
-	#[fail(display = "The states did not match")]
+	#[snafu(display("The states did not match"))]
 	MismatchedState,
 	/// The code has already been recieved
-	#[fail(display = "A code was already recieved")]
+	#[snafu(display("A code was already recieved"))]
 	AlreadyRecieved,
 	/// No message was ever recieved
-	#[fail(display = "No message was ever recieved")]
+	#[snafu(display("No message was ever recieved"))]
 	NeverRecieved,
-}
-
-struct MakeInstalledAppService {
-	code_sender: CodeSender,
-	state: Arc<String>,
-	response_gen: Arc<ResponseGenFn>,
-}
-
-impl<Ctx> MakeService<Ctx> for MakeInstalledAppService {
-	type ReqBody = Body;
-	type ResBody = Body;
-	type Error = hyper::Error;
-	type Service = InstalledAppService;
-	type Future = Box<Future<Item = Self::Service, Error = Self::MakeError> + Send + Sync>;
-	type MakeError = Box<dyn std::error::Error + Send + Sync>;
-
-	fn make_service(&mut self, _ctx: Ctx) -> Self::Future {
-		Box::new(futures::future::ok(InstalledAppService {
-			code_sender: Arc::clone(&self.code_sender),
-			state: Arc::clone(&self.state),
-			response_gen: Arc::clone(&self.response_gen),
-		}))
-	}
-}
-
-// The service that has the code_sender to send the code back to the main thread, the state to verify
-// that this is the right authorization instance, the optional responses, and a tokio Core needed to
-// clone the responses.
-struct InstalledAppService {
-	code_sender: CodeSender,
-	state: Arc<String>,
-	response_gen: Arc<ResponseGenFn>,
-}
-
-impl Service for InstalledAppService {
-	type ReqBody = Body;
-	type ResBody = Body;
-	type Error = HyperError;
-	type Future = Box<Future<Item = Response<Self::ResBody>, Error = Self::Error> + Send>;
-
-	fn call(&mut self, req: Request<Self::ReqBody>) -> Self::Future {
-		// Get the data from the request (the state and the code, or the error) in a HashMap
-		let query_str = req.uri().path_and_query().unwrap().as_str();
-		let query_str = &query_str[2..query_str.len()];
-		let params: HashMap<_, _> = url::form_urlencoded::parse(query_str.as_bytes()).collect();
-
-		// Create a HTTP response based on the result of the code retrieval, the code sender, and the
-		// response generator.
-		fn create_res(gen: &ResponseGenFn, res: &Result<String, InstalledAppError>, sender: &CodeSender) -> <InstalledAppService as Service>::Future {
-			let mut sender = sender.lock().unwrap();
-			let sender = if let Some(sender) = sender.take() {
-				sender
-			} else {
-				return Box::new(ok(gen(&Err(InstalledAppError::AlreadyRecieved))));
-			};
-			let resp = match sender.send(res.clone()) {
-				Ok(_) => gen(&res),
-				Err(_) => gen(&Err(InstalledAppError::AlreadyRecieved)),
-			};
-			Box::new(ok(resp))
-		}
-
-		// If there was an error stop here, returning the error response
-		if params.contains_key("error") {
-			warn!("Got failed authorization. Error was {}", &params["error"]);
-			let err = InstalledAppError::Error { msg: params["error"].to_string() };
-			create_res(&*self.response_gen, &Err(err.clone()), &self.code_sender)
-		} else {
-			// Get the state if it exists
-			let state = if let Some(state) = params.get("state") {
-				state
-			} else {
-				// Return error response if we didn't get the state
-				return create_res(&*self.response_gen, &Err(InstalledAppError::MismatchedState), &self.code_sender);
-			};
-			// Error if the state doesn't match
-			if *state != *self.state {
-				error!("State didn't match. Got state \"{}\", needed state \"{}\"", state, self.state);
-				create_res(&*self.response_gen, &Err(InstalledAppError::MismatchedState), &self.code_sender)
-			} else {
-				// Get the code and send it with the oneshot sender back to the main thread
-				let code = &params["code"];
-				create_res(&*self.response_gen, &Ok(code.clone().into()), &self.code_sender)
-			}
-		}
-	}
-}
-
-// A neat trait I came up with. If you have a RefCell<Option<T>>, then you can call pop() on it and
-// it will take the value out of the RefCell and give it back. If it doesn't exist, then it just returns None.
-trait RefCellExt<T> {
-	fn pop(&self) -> Option<T>;
-}
-
-impl<T: std::fmt::Debug> RefCellExt<T> for RefCell<Option<T>> {
-	fn pop(&self) -> Option<T> {
-		if self.borrow().is_some() {
-			return std::mem::replace(&mut *self.borrow_mut(), None);
-		}
-
-		None
-	}
 }

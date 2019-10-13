@@ -2,30 +2,34 @@
 //!
 //! This example requires registering the app as a script at [Reddit](https://www.reddit.com/prefs/apps)
 
-extern crate orca;
+use std::{
+	env,
+};
 
-use orca::App;
+use orca::Reddit;
 
-fn input(query: &str) -> String {
-	use std::io::Write;
-	let stdin = std::io::stdin();
-	print!("{}", query);
-	std::io::stdout().flush().unwrap();
-	let mut input = String::new();
-	stdin.read_line(&mut input).unwrap();
-	input.trim().to_string()
+fn var(name: &str) -> String {
+	env::var(name).expect(&format!("{} must be set", name))
 }
 
-fn main() {
-	println!("Please enter the requested information");
-	let username = input("Username: ");
-	let password = input("Password: ");
-	let id = input("Client id: ");
-	let secret = input("Client secret: ");
+#[tokio::main]
+async fn main() {
+	env_logger::init().unwrap();
+	
+	let username = var("ORCA_EXAMPLE_REDDIT_USERNAME");
+	let password = var("ORCA_EXAMPLE_REDDIT_PASSWORD");
+	let id = var("ORCA_EXAMPLE_REDDIT_SCRIPT_ID");
+	let secret = var("ORCA_EXAMPLE_REDDIT_SCRIPT_SECRET");
 
-	let mut reddit = App::new("orca_script_example", "1.0", "/u/IntrepidPig").unwrap();
-	reddit.authorize_script(&id, &secret, &username, &password).unwrap();
+	let reddit = Reddit::new("linux", "orca_script_example", "0.0", "/u/IntrepidPig").unwrap();
+	reddit.authorize_script(id, secret,	username, password).await.unwrap();
 
-	let user = reddit.get_self().unwrap();
-	println!("Got data: {}", user);
+	let user_req = hyper::Request::builder()
+		.method(hyper::Method::GET)
+		.uri("https://oauth.reddit.com/api/v1/me/.json")
+		.body(hyper::Body::empty())
+		.unwrap();
+	
+	let user: json::Value = reddit.json_request(user_req).await.unwrap();
+	println!("{}", json::to_string_pretty(&user).unwrap());
 }

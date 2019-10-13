@@ -1,99 +1,118 @@
-#![deny(missing_docs)]
-
 //! # orca
-//! orca is a library to make using the Reddit API from Rust easy
-//!
+//! orca is a library to make using the Reddit API from Rust easy.
+//! 
 //! ## Features
-//! orca has not yet implemented near all of the functionality available in the Reddit API, but
-//! enough has been implemented to make simple flexible scripts or apps. Some main functionality
-//! includes:
-//!
-//! * submitting self posts
-//! * automatic ratelimiting
-//! * commenting and replying
-//! * comment streams from subreddits
-//! * private messages
-//! * authorization as script or installed oauth app type
-//! * more stuff
-//!
-//! ## Structure
-//! All of the functionality necessary is available in the implementation of
-//! the `App` struct. Data structures are defined in `orca::data`. Networking code is present in
-//! the net module, which also contains OAuth authorization functionality.
+//! orca is currently somewhat bare-bones, but it provides a solid foundation
+//! to build a Reddit API client on. Some features include:
+//! 
+//! - Authorization: easily authorize an API client as a script or an installed app
+//! - Async: orca allows you to easily execute Reddit API calls concurrently
 //!
 //! ## Usage
-//! To simply create a reddit app instance, do
+//! To simply create a reddit client instance, do
 //!
 //! ```rust
-//! # use orca::App;
-//! # let (name, version, author) = ("a", "b", "c");
-//! let mut reddit = App::new(name, version, author).unwrap();
+//! # use orca::Reddit;
+//! # let (platform, id, version, author) = ("a", "b", "c", "d");
+//! let mut reddit = Reddit::new(platform, id, version, author)?;
 //! ```
-//!
-//! where `name`, `version`, and `author` are all `&str`s.
-//!
-//! This instance can do actions that don't require authorization, such as retrieving a stream of
-//! comments from a subreddit, but actions such as commenting require authorization, which can be
-//! done multiple ways. The most common way for clients to authorize is as scripts, which can be
-//! done by just providing a username and password as well as the id and secret of the app that can
-//! be registered on the desktop site. It looks like this in code (assuming you already have a
-//! mutable reddit instance):
-//!
-//! ```rust,no_run
-//! # use orca::App;
-//! # let mut reddit = App::new("a", "b", "c").unwrap();
+//! 
+//! Before API calls can be made, the client must be authorized.
+//! 
+//! ```rust
 //! # let (id, secret, username, password) = ("a", "b", "c", "d");
-//! reddit.authorize_script(id, secret, username, password).unwrap();
+//! reddit.authorize_script(id, secret, username, password).await?;
 //! ```
-//! More info can be found in the documentation for the net module
-//!
-//! Actually doing something is simple and similar to previous examples. To get info about the
-//! currently authorized user, simply call
-//!
-//! ```rust,no_run
-//! # use orca::App;
-//! # let mut reddit = App::new("a", "b", "c").unwrap();
-//! reddit.get_self();
+//! 
+//! Then to make an API call, create an HTTP request for the specified
+//! endpoint, and send the request.
+//! 
+//! ```rust
+//! let user_req = hyper::Request::builder()
+//! 	.method(hyper::Method::GET)
+//! 	.uri("https://oauth.reddit.com/api/v1/me/.json")
+//! 	.body(hyper::Body::empty())?;
+//! 
+//! let response: serde_json::Value = reddit.json_request(user_req).await?;
 //! ```
-//!
-//! which will return a json value until the actual user data structure is implemented.
 //!
 
-extern crate chrono;
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate failure_derive;
-extern crate futures;
-extern crate hyper;
-extern crate hyper_tls;
-#[macro_use]
-extern crate log;
-extern crate base64;
-extern crate open;
-extern crate rand;
-extern crate serde;
-extern crate serde_json as json;
-extern crate tokio_core;
-extern crate url;
+use std::{
+	sync::{RwLock},
+};
 
+use hyper::{
+	client::{Client, HttpConnector},
+	Body,
+};
+use hyper_tls::{
+	HttpsConnector,
+};
+use snafu::{Snafu};
+
+use crate::{
+	net::{
+		auth::{OAuth},
+	},
+};
+
+/// Contains code for handling network communication with reddit (HTTP, ratelimiting, authorization, etc)
+pub mod net;
 #[cfg(test)]
 mod test;
 
-/// Functionality for communication with reddit.com
-pub mod net;
+/// A Reddit object. This struct represents the state of a connection with Reddit. It is recommended
+/// to only have one Reddit instance per IP address to avoid issues with rate-limiting, but it is not
+/// required.
+pub struct Reddit {
+	auth: RwLock<Option<OAuth>>,
+	user_agent: RwLock<String>,
+	client: Client<HttpsConnector<HttpConnector>, Body>,
+}
 
-/// Reddit data structures
-pub mod data;
+impl Reddit {
+	/// Create a new Reddit instance
+	/// 
+	/// ## Parameters
+	/// - `platform`: The platform this API client is running on (e.g. linux, android, etc.)
+	/// - `app_id`: A unique id to identify this API client
+	/// - `app_version`: The current version of this API client
+	/// - `app_author`: The author of this API client
+	pub fn new(platform: &str, app_id: &str, app_version: &str, app_author: &str) -> Result<Self, hyper_tls::Error> {
+		let user_agent = format!("{}:{}:{} (by {})", platform, app_id, app_version, app_author);
+		let client = Client::builder()
+			.build(HttpsConnector::new()?);
+		
+		Ok(Self {
+			auth: RwLock::new(None),
+			user_agent: RwLock::new(user_agent),
+			client,
+		})
+	}
+	
+	/// Helper function to parse a &str as JSON
+	pub fn parse_json<'a, T: serde::Deserialize<'a>>(input: &'a str) -> Result<T, RedditError> {
+		json::from_str(input)
+			.map_err(|_e| RedditError::BadJson)
+	}
+}
 
-/// Errors
-pub mod errors;
-
-/// Main entry point
-pub mod app;
-
-pub use app::App;
-pub use data::{Sort, SortTime};
-pub use errors::RedditError;
-pub use net::auth::{self, InstalledAppError, ResponseGenFn, Scopes};
-pub use net::{Connection, LimitMethod};
+/// Represents possible errors that can occur while communicating with Reddit
+#[derive(Debug, Snafu)]
+pub enum RedditError {
+	/// Tried to use a User-Agent that isn't valid
+	#[snafu(display("User agent was malformed"))]
+	BadUserAgent,
+	/// An error occurred while sending an HTTP request
+	#[snafu(display("An error occurred while sending an HTTP request: {}", source))]
+	HttpError {
+		/// The underlying HTTP error
+		source: hyper::Error,
+	},
+	/// Tried to parse something as JSON that wasn't valid JSON
+	#[snafu(display("Failed to parse text as JSON"))]
+	BadJson,
+	/// An unknown error occurred
+	#[snafu(display("An unknown error occurred"))]
+	Unknown,
+}

@@ -5,3 +5,4 @@ Cargo.lock
 .vscode/
 design.txt
 test
+.env
